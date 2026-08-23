@@ -1,0 +1,1 @@
+-- NovaMart seed: 06_inventory_pricing (populated in a later migration step)

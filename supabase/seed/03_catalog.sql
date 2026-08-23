@@ -1,0 +1,1 @@
+-- NovaMart seed: 03_catalog (populated in a later migration step)

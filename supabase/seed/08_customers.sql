@@ -1,0 +1,1 @@
+-- NovaMart seed: 08_customers (populated in a later migration step)

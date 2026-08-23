@@ -1,0 +1,1 @@
+-- NovaMart seed: 05_products (populated in a later migration step)

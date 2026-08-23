@@ -1,0 +1,136 @@
+# NovaMart — Supabase configuration
+# Remote project: qeayqpxyhbcybmttdrgp
+#
+# IMPORTANT: api.schemas deliberately exposes ONLY `public` and `api` through PostgREST.
+# Domain schemas (payments, finance, audit, inventory, ...) are unreachable by the
+# anon/authenticated roles by design. Client-safe reads are published as views in `api`.
+# See docs/adr/0003-schema-per-domain.md
+
+project_id = "novamart"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "api"]
+extra_search_path = ["public", "extensions"]
+max_rows = 200
+
+[api.tls]
+enabled = false
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.pooler]
+enabled = true
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 200
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed/00_platform.sql", "./seed/01_geography.sql", "./seed/02_rbac.sql", "./seed/03_catalog.sql", "./seed/04_sellers.sql", "./seed/05_products.sql", "./seed/06_inventory_pricing.sql", "./seed/07_marketing.sql", "./seed/08_customers.sql", "./seed/09_orders.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[storage.image_transformation]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3001/auth/callback",
+  "http://localhost:3002/auth/callback",
+  "http://localhost:3003/auth/callback",
+  "http://localhost:3004/auth/callback",
+  "novamart://auth/callback",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 10
+password_requirements = "lower_upper_letters_digits_symbols"
+
+[auth.rate_limit]
+email_sent = 30
+sms_sent = 30
+anonymous_users = 10
+token_refresh = 150
+sign_in_sign_ups = 30
+token_verifications = 30
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = true
+otp_length = 6
+otp_expiry = 300
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+template = "Your NovaMart verification code is {{ .Code }}. Valid for 5 minutes. Do not share it with anyone."
+max_frequency = "60s"
+
+[auth.sms.test_otp]
+# Local-only deterministic OTPs so E2E tests never hit a real SMS provider.
+"919000000001" = "123456"
+"919000000002" = "123456"
+"919000000003" = "123456"
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.sessions]
+# Staff consoles enforce shorter sessions in application middleware as well.
+timebox = "24h"
+inactivity_timeout = "8h"
+
+[auth.external.google]
+enabled = false
+client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(AUTH_GOOGLE_SECRET)"
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
+skip_nonce_check = false
+
+[auth.external.apple]
+enabled = false
+client_id = "env(AUTH_APPLE_CLIENT_ID)"
+secret = "env(AUTH_APPLE_SECRET)"
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
+
+[analytics]
+enabled = false
+
+[edge_runtime]
+enabled = true
+policy = "oneshot"
+inspector_port = 8083

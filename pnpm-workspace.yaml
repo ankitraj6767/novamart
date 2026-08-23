@@ -1,0 +1,9 @@
+packages:
+  - 'apps/customer-web'
+  - 'apps/seller-web'
+  - 'apps/admin-web'
+  - 'apps/operations-web'
+  - 'apps/support-web'
+  - 'services/*'
+  - 'packages/*'
+  - 'tests/*'

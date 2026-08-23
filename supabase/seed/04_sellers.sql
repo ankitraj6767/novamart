@@ -1,0 +1,1 @@
+-- NovaMart seed: 04_sellers (populated in a later migration step)

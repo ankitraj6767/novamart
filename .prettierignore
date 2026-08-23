@@ -1,0 +1,13 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+supabase/.temp
+**/*.g.dart
+**/*.freezed.dart
+apps/customer-mobile
+apps/seller-mobile
+apps/delivery-mobile
+apps/warehouse-mobile

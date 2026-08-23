@@ -1,0 +1,1 @@
+-- NovaMart seed: 07_marketing (populated in a later migration step)

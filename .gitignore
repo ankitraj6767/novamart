@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+.pub-cache/
+.pub/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GeneratedPluginRegistrant.*
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/upload-keystore.jks
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+**/*.g.dart
+**/*.freezed.dart
+**/*.config.dart
+**/*.mocks.dart
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Secrets / local artifacts
+*.pem
+*.p12
+*.keystore
+.secrets/
+tmp/

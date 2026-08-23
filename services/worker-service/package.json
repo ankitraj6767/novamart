@@ -1,0 +1,30 @@
+{
+  "name": "@novamart/worker-service",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput & node --watch --env-file-if-exists=.env.local dist/main.js",
+    "dev:once": "tsc -p tsconfig.json && node --env-file-if-exists=.env.local dist/main.js",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@novamart/config": "workspace:*",
+    "@novamart/domain": "workspace:*",
+    "@novamart/events": "workspace:*",
+    "@novamart/logger": "workspace:*",
+    "@novamart/types": "workspace:*",
+    "ioredis": "5.4.2",
+    "postgres": "3.4.5",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
+  }
+}

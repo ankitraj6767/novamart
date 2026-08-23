@@ -121,6 +121,18 @@ export const serverEnvSchema = z
     OUTBOX_POLL_INTERVAL_MS: intFromString(250),
     OUTBOX_BATCH_SIZE: intFromString(100),
     OUTBOX_MAX_ATTEMPTS: intFromString(8),
+
+    // Worker runtime. Jobs legitimately run longer than an API request (a reconciliation
+    // sweep scans a lot of rows), so they get their own ceiling rather than inheriting
+    // the API's 15s.
+    WORKER_STATEMENT_TIMEOUT_MS: intFromString(60_000),
+    /** How long a rolling deploy may take before in-flight work is abandoned. */
+    WORKER_SHUTDOWN_GRACE_MS: intFromString(15_000),
+    /** Reclaim window for events left PROCESSING by a worker that died mid-batch. */
+    OUTBOX_VISIBILITY_TIMEOUT_SECONDS: intFromString(300),
+    /** Set false on replicas that should only run the dispatcher, not scheduled jobs. */
+    WORKER_RUN_SCHEDULED_JOBS: booleanish.default(true),
+    WORKER_RUN_OUTBOX_DISPATCHER: booleanish.default(true),
   })
   .superRefine((env, ctx) => {
     if (env.APP_ENV !== 'production') return;

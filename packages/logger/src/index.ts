@@ -50,19 +50,32 @@ export const REDACTED_PATHS = [
   'beneficiaryDetails',
 ] as const;
 
+/**
+ * Renders one path segment.
+ *
+ * fast-redact only accepts bare identifiers in dot notation, so a key containing a
+ * hyphen (`set-cookie`) has to be written in bracket notation or pino throws
+ * "redact paths array contains an invalid path" and the process dies at startup.
+ */
+function segment(field: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field) ? `.${field}` : `["${field}"]`;
+}
+
+/** A leading segment cannot start with a dot. */
+function rootSegment(field: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field) ? field : `["${field}"]`;
+}
+
 function redactionPaths(): string[] {
   const paths: string[] = [];
+  const prefixes = ['', '*', 'req.body', 'req.headers', 'request', 'payload', 'data', 'body', 'context'];
+
   for (const field of REDACTED_PATHS) {
-    paths.push(field);
-    paths.push(`*.${field}`);
-    paths.push(`req.body.${field}`);
-    paths.push(`req.headers.${field}`);
-    paths.push(`request.${field}`);
-    paths.push(`payload.${field}`);
-    paths.push(`data.${field}`);
-    paths.push(`body.${field}`);
-    paths.push(`context.${field}`);
+    for (const prefix of prefixes) {
+      paths.push(prefix === '' ? rootSegment(field) : `${prefix}${segment(field)}`);
+    }
   }
+
   // Header blocks are redacted wholesale rather than per-key.
   paths.push('req.headers.authorization', 'req.headers.cookie', 'headers.authorization');
   return Array.from(new Set(paths));
@@ -107,16 +120,39 @@ export interface LoggerContext {
   version?: string;
 }
 
+/**
+ * Resolves pino-pretty to an absolute path, or null when it is unavailable.
+ *
+ * Two problems this avoids:
+ *
+ *  - pino resolves a transport target from the calling module's context. Under pnpm's
+ *    isolated node_modules that is not this package, so the bare name 'pino-pretty' can
+ *    fail to resolve in a consumer that does not depend on it directly. An absolute path
+ *    resolves from here, where it IS a dependency.
+ *  - Pretty printing is a developer convenience. If it cannot be loaded, the right
+ *    outcome is plain JSON logs, not a service that refuses to boot. Returning null lets
+ *    createLogger degrade instead of throwing.
+ */
+function resolvePrettyTransport(): string | null {
+  try {
+    return require.resolve('pino-pretty');
+  } catch {
+    return null;
+  }
+}
+
 export function createLogger(context: LoggerContext, level = 'info'): Logger {
+  const prettyTarget = context.env === 'local' ? resolvePrettyTransport() : null;
+
   const options: LoggerOptions = {
     level,
     base: { service: context.service, env: context.env, version: context.version },
     redact: { paths: redactionPaths(), censor: '[REDACTED]' },
     // Pretty output locally; JSON everywhere else so log shipping stays parseable.
-    ...(context.env === 'local'
+    ...(prettyTarget
       ? {
         transport: {
-          target: 'pino-pretty',
+          target: prettyTarget,
           options: { colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname,service,env' },
         },
       }

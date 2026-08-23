@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scrubString, scrubValue } from './index';
+import { createLogger, scrubString, scrubValue } from './index';
 
 describe('scrubString', () => {
   it('masks card-shaped numbers', () => {
@@ -49,5 +49,48 @@ describe('scrubValue', () => {
     let deep: Record<string, unknown> = { value: 'leaf' };
     for (let i = 0; i < 12; i += 1) deep = { nested: deep };
     expect(JSON.stringify(scrubValue(deep))).toContain('TRUNCATED');
+  });
+});
+
+/**
+ * These exist because createLogger had never actually been called anywhere: commerce-api
+ * uses Nest's logger, and the worker service was the first real consumer. Two separate
+ * defects surfaced at its first invocation, both of which crashed the process at startup:
+ *
+ *   1. a 'pino-pretty' transport target that nothing depended on
+ *   2. a redact path ('set-cookie') that fast-redact rejects, because a hyphenated key
+ *      must use bracket notation
+ *
+ * A logger that throws while being constructed takes the whole service down, so
+ * constructing one is the assertion that matters most.
+ */
+describe('createLogger', () => {
+  it('constructs in local mode, where the pretty transport is used', () => {
+    expect(() => createLogger({ service: 'test', env: 'local' })).not.toThrow();
+  });
+
+  it('constructs in production mode, where output is JSON', () => {
+    expect(() => createLogger({ service: 'test', env: 'production' })).not.toThrow();
+  });
+
+  it('constructs at every level', () => {
+    for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal']) {
+      expect(() => createLogger({ service: 'test', env: 'staging' }, level)).not.toThrow();
+    }
+  });
+
+  it('accepts every generated redaction path', () => {
+    // Any field name that needs bracket notation is covered by constructing the logger,
+    // since pino validates the whole path list up front.
+    const logger = createLogger({ service: 'test', env: 'staging' });
+    expect(logger).toBeDefined();
+    expect(typeof logger.info).toBe('function');
+  });
+
+  it('redacts a hyphenated header key without throwing', () => {
+    const logger = createLogger({ service: 'test', env: 'staging' });
+    expect(() =>
+      logger.info({ req: { headers: { 'set-cookie': 'session=secret' } } }, 'headers'),
+    ).not.toThrow();
   });
 });

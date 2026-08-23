@@ -9,10 +9,16 @@
 -- Local development only: the password hash is a throwaway value.
 -- =============================================================================
 
+-- The token columns are set to '' rather than left NULL on purpose. GoTrue scans them
+-- into non-nullable Go strings, so a NULL confirmation_token makes every sign-in fail
+-- with "Database error querying schema" — the account looks fine in the table and is
+-- simply unusable. Supabase's own signup path writes '' here.
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, phone, phone_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change_token_current,
+  phone_change_token, reauthentication_token, email_change, phone_change
 )
 select '00000000-0000-0000-0000-000000000000'::uuid,
        v.id::uuid, 'authenticated', 'authenticated', v.email,
@@ -20,7 +26,8 @@ select '00000000-0000-0000-0000-000000000000'::uuid,
        now() - interval '60 days', v.phone, now() - interval '60 days',
        '{"provider":"phone","providers":["phone","email"]}'::jsonb,
        jsonb_build_object('full_name', v.full_name),
-       now() - interval '60 days', now() - interval '60 days'
+       now() - interval '60 days', now() - interval '60 days',
+       '', '', '', '', '', '', '', ''
   from (values
     ('11111111-1111-4111-8111-111111111111', 'ananya.iyer@example.novamart.in',  '919000000001', 'Ananya Iyer'),
     ('22222222-2222-4222-8222-222222222222', 'rahul.mehta@example.novamart.in',  '919000000002', 'Rahul Mehta'),
@@ -80,7 +87,9 @@ select v.user_id::uuid, v.label, v.name, v.phone, v.line1, v.line2,
 -- -----------------------------------------------------------------------------
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change_token_current,
+  phone_change_token, reauthentication_token, email_change, phone_change
 )
 select '00000000-0000-0000-0000-000000000000'::uuid,
        '44444444-4444-4444-8444-444444444444'::uuid, 'authenticated', 'authenticated',
@@ -89,7 +98,8 @@ select '00000000-0000-0000-0000-000000000000'::uuid,
        now() - interval '90 days',
        '{"provider":"email","providers":["email"]}'::jsonb,
        '{"full_name":"Priya Nair"}'::jsonb,
-       now() - interval '90 days', now() - interval '90 days'
+       now() - interval '90 days', now() - interval '90 days',
+       '', '', '', '', '', '', '', ''
  where not exists (
    select 1 from auth.users u where u.id = '44444444-4444-4444-8444-444444444444'::uuid
  );
@@ -126,7 +136,9 @@ on conflict do nothing;
 -- -----------------------------------------------------------------------------
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change_token_current,
+  phone_change_token, reauthentication_token, email_change, phone_change
 )
 select '00000000-0000-0000-0000-000000000000'::uuid,
        '55555555-5555-4555-8555-555555555555'::uuid, 'authenticated', 'authenticated',
@@ -135,7 +147,8 @@ select '00000000-0000-0000-0000-000000000000'::uuid,
        now() - interval '120 days',
        '{"provider":"email","providers":["email"]}'::jsonb,
        '{"full_name":"Operations Admin"}'::jsonb,
-       now() - interval '120 days', now() - interval '120 days'
+       now() - interval '120 days', now() - interval '120 days',
+       '', '', '', '', '', '', '', ''
  where not exists (
    select 1 from auth.users u where u.id = '55555555-5555-4555-8555-555555555555'::uuid
  );

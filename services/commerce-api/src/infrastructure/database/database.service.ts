@@ -102,6 +102,21 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }) as Promise<T>;
   }
 
+  /**
+   * Re-stamps the session context inside an open transaction.
+   *
+   * Needed where one atomic operation is legitimately performed by two actors — a
+   * customer requesting a cancellation and the platform then completing it, for
+   * instance. The state machine restricts those two transitions to different actor
+   * types, and splitting the work across two transactions to satisfy that would risk
+   * leaving an order stuck in CANCELLATION_REQUESTED with its stock already released.
+   *
+   * The resulting history shows both steps with their true actor, which is the point.
+   */
+  async switchActor(tx: Tx, context: SessionContext): Promise<void> {
+    await this.applySessionContext(tx, context);
+  }
+
   private async applySessionContext(tx: Tx, context: SessionContext): Promise<void> {
     // set_config with is_local = true scopes these to the transaction, so a pooled
     // connection cannot leak one request's identity into the next.

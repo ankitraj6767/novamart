@@ -9,7 +9,7 @@
 
 export type Paise = number;
 
-export class MoneyError extends Error {}
+export class MoneyError extends Error { }
 
 function assertInteger(value: number, label: string): void {
   if (!Number.isInteger(value)) {
@@ -61,17 +61,25 @@ export function taxableValueFromInclusive(inclusiveAmount: Paise, gstRate: numbe
 
 /**
  * Splits GST into CGST/SGST (intra-state) or IGST (inter-state).
- * CGST and SGST are always equal halves; the odd paisa goes to CGST so the parts sum
- * exactly to the total.
+ *
+ * CGST and SGST are EXACTLY equal. That is not a rounding preference: a tax invoice
+ * showing CGST != SGST for an intra-state supply is not a valid invoice, and
+ * commerce.order_item_price_breakdowns enforces `cgst_paise = sgst_paise` for the same
+ * reason.
+ *
+ * Consequence: the split total can differ from `taxPaise` by one paisa when `taxPaise`
+ * is odd. Callers must therefore treat `cgst + sgst + igst` as the authoritative GST
+ * amount rather than the value they passed in — which is also how it works in practice,
+ * since each half is computed from the taxable value in its own right.
  */
 export function splitGst(
   taxPaise: Paise,
   isIntraState: boolean,
-): { cgst: Paise; sgst: Paise; igst: Paise } {
+): { cgst: Paise; sgst: Paise; igst: Paise; total: Paise } {
   assertInteger(taxPaise, 'taxPaise');
-  if (!isIntraState) return { cgst: 0, sgst: 0, igst: taxPaise };
-  const half = Math.floor(taxPaise / 2);
-  return { cgst: taxPaise - half, sgst: half, igst: 0 };
+  if (!isIntraState) return { cgst: 0, sgst: 0, igst: taxPaise, total: taxPaise };
+  const half = roundPaise(taxPaise / 2);
+  return { cgst: half, sgst: half, igst: 0, total: half * 2 };
 }
 
 /**
@@ -127,11 +135,11 @@ export function formatPaise(paise: Paise): string {
   return paise % 100 === 0
     ? INR_FORMATTER.format(rupees)
     : new Intl.NumberFormat('en-IN', {
-        style: 'currency',
-        currency: 'INR',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(rupees);
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(rupees);
 }
 
 export interface Money {

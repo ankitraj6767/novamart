@@ -5,6 +5,71 @@ implemented. Updated: 2026-08-23.
 
 ---
 
+## The checkout vertical is now working end to end
+
+A customer can sign in, browse, add to cart, be quoted authoritatively, place an order,
+pay, and cancel with a refund raised — against the real database, with the real state
+machine and the real inventory engine.
+
+**Verified by `tests/e2e-api/checkout-vertical.mjs`: 50 assertions, 0 failures**, run
+against a freshly reset database. It asserts the invariants that matter rather than the
+happy path alone:
+
+| Invariant | Brief |
+| --- | --- |
+| Server prices the order; a client-supplied total is rejected with `PRICE_CHANGED` | §100 |
+| Order placement without an `Idempotency-Key` is refused | §61 |
+| Placing twice with one key yields ONE order, not two | §61 |
+| A webhook with a bad signature is refused and not recorded | §54 |
+| A redelivered webhook is a no-op; order status and total unchanged | §34 |
+| Payment is only `verified` from a server-side source, never a client claim | §33 |
+| Stock is reserved at checkout and released on cancellation | §25 |
+| An order the caller does not own returns 404, not 403 | IDOR |
+
+Alongside the pre-existing SQL-level proof, re-run on the current schema:
+
+```
+tests/concurrency/run-oversell-test.sh 300 30
+→ 100 units, 300 concurrent attempts, 30 connections
+→ exactly 100 reservations; ledger and balances reconcile
+→ RESULT: PASS
+```
+
+Full verification state: `pnpm typecheck` clean (15 tasks), `pnpm test` 70 tests passing,
+`supabase db reset` exits 0 applying **29 migrations** with **zero tables missing RLS**.
+
+### Bugs this exercise found and fixed
+
+Building the vertical was what proved these; none were visible from the schema alone.
+
+- **`fulfillment.calculate_shipping_charge` was unusable by any caller.** It returned
+  `bigint` where its signature declared `public.paise` (arithmetic over a domain yields
+  the base type), so `RETURN QUERY` failed with SQLSTATE 42804. Every basket would have
+  500'd at the shipping step. Fixed in migration `20260823002900`.
+- **No seeded user could sign in.** `auth.users` rows were inserted with NULL token
+  columns; GoTrue scans those into non-nullable Go strings and fails the whole request
+  with "Database error querying schema". Fixed in `seed/08_customers.sql`.
+- **`analytics.events` partitions had RLS disabled**, and `ensure_event_partition()`
+  created every future partition unpoliced. Not reachable today (only `service_role` holds
+  grants) but a single future grant would have exposed unpoliced copies of the rows, since
+  a query naming a partition directly bypasses the parent's policies. Fixed in
+  `20260823002800`.
+- **`splitGst` produced invalid tax invoices.** It gave the odd paisa to CGST, so
+  CGST ≠ SGST on an intra-state supply — which no auditor accepts, and which
+  `breakdown_cgst_equals_sgst` rejects. Now splits into exact halves and reports the
+  adjusted total.
+- **`tsx` cannot run this API.** esbuild does not emit `emitDecoratorMetadata`, so Nest's
+  DI injected `undefined` for every constructor parameter and *every* endpoint returned
+  500. Dev now compiles with `tsc`.
+- **The error filter logged nothing useful** — `Error` objects JSON-serialise to `{}`, so
+  every 500 was opaque. It now lifts out name, message, stack and the Postgres
+  SQLSTATE/constraint/detail fields. This is what made the rest of the list findable.
+- Payment confirmation ran with the **customer's** actor type, but
+  `PENDING_PAYMENT → PAYMENT_CONFIRMED` is SYSTEM-only. Payment outcomes now run under a
+  SYSTEM context while still recording who prompted them.
+
+---
+
 ## Verified complete
 
 ### Phase 0 — Architecture
@@ -75,11 +140,26 @@ code yet. The database is deliberately ahead because it is the hardest part to c
 later.
 
 ### Backend — `services/commerce-api`
-NestJS on Fastify. The edge stack (request context, JWT verification, permission guard,
-Zod validation pipe, idempotency middleware, rate limiting, problem-detail error mapper
-including the `NM0xx` SQLSTATE map, audit interceptor) and the domain modules listed in
-`docs/SYSTEM_ARCHITECTURE.md §2`. The SQL engines they orchestrate already exist, so
-these modules are thin coordinators rather than reimplementations.
+
+Implemented and exercised end to end:
+
+- Edge stack: request context, JWKS/HS256 JWT verification, permission + scope + MFA
+  guard, Zod validation, idempotency, rate limiting, error mapper with the `NM0xx`
+  SQLSTATE map
+- `catalog` — categories, PLP, PDP with SKU-scoped Buy Box, CMS home, serviceability
+- `identity` — profile, addresses, devices, notification preferences
+- `cart` — items, coupon intent, pincode, save-for-later, live revalidation
+- `checkout` — the engine: listing validation, fulfillment-node selection, delivery
+  promise, shipping, GST, promotions/coupons, COD decision, reservation, order creation
+  with frozen price and commission snapshots
+- `orders` — keyset-paginated list, detail with timeline and tracking, cancellation
+- `payments` — provider session, idempotent webhooks, client-verify, refund outcomes
+- `platform` — settings and feature flags with percentage rollout
+- Adapters behind the ports: Razorpay, plus a mock provider that signs its webhooks with
+  the same HMAC scheme so the failure paths in §67 are testable
+
+Still to build: `seller`, `inventory` (write side), `search`, `reviews`/Q&A, `returns`,
+`fulfillment` (shipment creation), `finance`, `support`, `notifications`, `admin`.
 
 ### Workers
 `worker-service` (outbox dispatcher + consumers), `search-indexer`,
@@ -104,9 +184,11 @@ Razorpay adapter behind `PaymentProvider`; Shiprocket/Delhivery behind
 tests never touch a real provider.
 
 ### Remaining seed files
-`03_catalog` through `09_orders` exist as placeholders. Realistic categories, brands,
-attributes, products, variants, SKUs, sellers, warehouses, inventory, customers and
-orders are still to be written.
+`03_catalog` through `08_customers` now carry real data (18 categories, 6 brands, 5
+products with 13 SKUs and 15 competing listings, 4 sellers, 4 warehouses, 3 test
+customers with addresses). `07_marketing` and `09_orders` are still placeholders —
+marketing content is currently seeded from `06`. The catalogue is deliberately small; it
+needs breadth before it resembles a marketplace.
 
 ### Testing and CI
 Vitest unit/integration suites, RLS allow/deny matrix (`tests/rls`), Playwright E2E,
@@ -128,10 +210,25 @@ These cannot be inferred and block the corresponding integration:
 - Approved legal copy: terms of use, privacy policy, seller agreement, return policy
 - Production domains and Cloudflare zone
 
+## Local development notes
+
+- `SUPABASE_JWKS_URL` must be set in `services/commerce-api/.env.local`. Supabase now
+  signs access tokens asymmetrically (ES256 with a `kid`); the HS256 secret alone will
+  reject every token. `.env.example` documents it.
+- Seeded customers sign in with `NovaMart#Local1`
+  (`ananya.iyer@example.novamart.in` and others in `seed/08_customers.sql`).
+- With `PAYMENT_PROVIDER=mock`, `POST /api/v1/payments/mock/:providerIntentId/succeed`
+  drives a real signed webhook through the real handler. Those routes are not registered
+  when `APP_ENV=production`.
+- Do not run `supabase db reset --linked` or `db push`: this working copy is linked to a
+  remote project.
+
 ## Recommended next step
 
-Build `services/commerce-api` foundation plus the checkout vertical end to end
-(cart → pricing → reservation → order → payment intent → webhook confirmation),
-because it exercises every hard invariant already in the database and turns the
-verified SQL engines into a working purchase. Then the customer storefront against
-that API, then the seller and admin consoles.
+The storefront. `customer-web` against the working API is now the highest-value move: it
+turns a verified purchase path into something a person can actually use, and it will
+surface contract gaps in the same way building checkout surfaced the six bugs above.
+
+After that, in order: the seller console (so a seller can list and fulfil without a
+developer), the outbox dispatcher and workers (so events currently accumulating in
+`platform.outbox_events` are consumed), then shipment creation, returns and settlement.

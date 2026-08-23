@@ -47,7 +47,39 @@ export class ErrorFilter implements ExceptionFilter {
     };
 
     if (appError.status >= 500) {
-      this.logger.error({ ...logPayload, err: appError.cause ?? appError }, appError.message);
+      // An Error instance JSON-serialises to {}, so name/message/stack are lifted out
+      // explicitly. A 500 log that says nothing is the same as no log at all.
+      const cause = appError.cause ?? appError;
+      const detail =
+        cause instanceof Error
+          ? { errName: cause.name, errMessage: cause.message, stack: cause.stack }
+          : { errValue: this.safeStringify(cause) };
+
+      // Postgres attaches these, and they are usually the whole answer.
+      const pg = cause as {
+        code?: string;
+        detail?: string;
+        hint?: string;
+        constraint?: string;
+        table?: string;
+        schema?: string;
+        routine?: string;
+        where?: string;
+      };
+      const pgDetail =
+        typeof pg?.code === 'string'
+          ? {
+            sqlstate: pg.code,
+            pgDetail: pg.detail,
+            pgHint: pg.hint,
+            pgConstraint: pg.constraint,
+            pgTable: pg.schema ? `${pg.schema}.${pg.table}` : pg.table,
+            pgRoutine: pg.routine,
+            pgWhere: pg.where,
+          }
+          : {};
+
+      this.logger.error({ ...logPayload, ...detail, ...pgDetail }, appError.message);
     } else if (appError.status === 429 || appError.status === 423) {
       this.logger.warn(logPayload, appError.message);
     } else {
@@ -55,6 +87,15 @@ export class ErrorFilter implements ExceptionFilter {
     }
 
     void reply.status(appError.status).send(body);
+  }
+
+  /** Never let logging itself throw on a circular or exotic value. */
+  private safeStringify(value: unknown): string {
+    try {
+      return typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
   }
 
   private normalise(exception: unknown): AppError {
@@ -69,9 +110,27 @@ export class ErrorFilter implements ExceptionFilter {
       );
     }
 
-    // A Postgres error carries a SQLSTATE; those map to domain error codes.
-    const maybePg = exception as { code?: unknown; severity?: unknown };
-    if (typeof maybePg?.code === 'string' && /^[0-9A-Z]{5}$/.test(maybePg.code)) {
+    const maybeCode = (exception as { code?: unknown }).code;
+
+    /**
+     * Fastify request-parsing failures are the client's fault, not ours, so they must
+     * not surface as 500s.
+     *
+     * The common one is a POST with `Content-Type: application/json` and no body: plenty
+     * of HTTP clients set the header unconditionally, and several endpoints here take no
+     * body at all. Fastify raises FST_ERR_CTP_EMPTY_JSON_BODY for that, which would
+     * otherwise be reported as an internal error and page somebody.
+     */
+    if (typeof maybeCode === 'string' && maybeCode.startsWith('FST_ERR_CTP')) {
+      const issue =
+        maybeCode === 'FST_ERR_CTP_EMPTY_JSON_BODY'
+          ? 'Request body is empty but Content-Type is application/json. Omit the header or send {}.'
+          : 'Request body could not be parsed';
+      return AppError.validation([{ field: 'body', issue }], issue);
+    }
+
+    // A Postgres error carries a five-character SQLSTATE; those map to domain codes.
+    if (typeof maybeCode === 'string' && /^[0-9A-Z]{5}$/.test(maybeCode)) {
       return AppError.fromDatabaseError(exception);
     }
 

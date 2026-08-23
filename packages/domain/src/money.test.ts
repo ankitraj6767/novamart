@@ -50,18 +50,36 @@ describe('taxFromInclusive', () => {
 
 describe('splitGst', () => {
   it('splits intra-state tax into equal halves', () => {
-    expect(splitGst(18000, true)).toEqual({ cgst: 9000, sgst: 9000, igst: 0 });
+    expect(splitGst(18000, true)).toEqual({ cgst: 9000, sgst: 9000, igst: 0, total: 18000 });
   });
 
-  it('gives the odd paisa to CGST so the parts sum to the total', () => {
-    const { cgst, sgst, igst } = splitGst(1801, true);
-    expect(cgst + sgst + igst).toBe(1801);
+  /**
+   * CGST and SGST must be identical on an intra-state invoice. An odd input therefore
+   * rounds to an even total rather than handing the spare paisa to one side: an invoice
+   * with CGST != SGST is invalid, and the database rejects it too.
+   */
+  it('keeps CGST and SGST exactly equal, reporting the adjusted total', () => {
+    const { cgst, sgst, igst, total } = splitGst(1801, true);
+    expect(cgst).toBe(sgst);
     expect(cgst).toBe(901);
-    expect(sgst).toBe(900);
+    expect(igst).toBe(0);
+    expect(total).toBe(1802);
+    expect(cgst + sgst + igst).toBe(total);
   });
 
-  it('uses IGST for inter-state supply', () => {
-    expect(splitGst(18000, false)).toEqual({ cgst: 0, sgst: 0, igst: 18000 });
+  it('rounds an odd total down when the half rounds down', () => {
+    const { cgst, sgst, total } = splitGst(1799, true);
+    expect(cgst).toBe(900);
+    expect(sgst).toBe(900);
+    expect(total).toBe(1800);
+  });
+
+  it('uses IGST for inter-state supply, where no split applies', () => {
+    expect(splitGst(18000, false)).toEqual({ cgst: 0, sgst: 0, igst: 18000, total: 18000 });
+  });
+
+  it('leaves an odd inter-state amount untouched', () => {
+    expect(splitGst(1801, false)).toEqual({ cgst: 0, sgst: 0, igst: 1801, total: 1801 });
   });
 });
 

@@ -100,12 +100,20 @@ export interface PricedLine {
   quantity: number;
   unitMrpPaise: Paise;
   unitSellingPricePaise: Paise;
+  /** Selling price x quantity. Already net of the MRP gap. */
   grossPaise: Paise;
+  /**
+   * MRP - selling price, for display ("you save X"). NOT included in
+   * totalDiscountPaise, because grossPaise is already net of it.
+   */
   sellerDiscountPaise: Paise;
+  /** Platform-funded share of the promotional reduction. */
   platformDiscountPaise: Paise;
   couponDiscountPaise: Paise;
+  /** Seller- and brand-funded share of the promotional reduction. */
   promotionDiscountPaise: Paise;
   bankOfferDiscountPaise: Paise;
+  /** platform + promotion + coupon + bankOffer. Excludes sellerDiscountPaise. */
   totalDiscountPaise: Paise;
   shippingPaise: Paise;
   codFeePaise: Paise;
@@ -405,12 +413,32 @@ export function computePricing(ctx: PricingContext): PricingResult {
     const totalDiscount = promo + coup + bank;
     const totalPayable = g - totalDiscount + ship + cod + wrap;
 
+    // Funding attribution. `promo` is the whole promotional reduction; `platform` is the
+    // part NovaMart funds. They are reported as complementary parts so that
+    //   platformDiscount + promotionDiscount + couponDiscount + bankOfferDiscount
+    //     == totalDiscount
+    // which is the identity commerce.order_item_price_breakdowns enforces. Reporting the
+    // full promotion in both fields would double-count it.
+    //
+    // sellerDiscountPaise is deliberately NOT part of totalDiscount: `gross` is built
+    // from the selling price, which is already net of the MRP gap. Subtracting it again
+    // would discount the order twice. It is carried for display only, and is always
+    // recoverable from unitMrpPaise - unitSellingPricePaise.
+    const platformFunded = Math.min(platform, promo);
+    const sellerFundedPromotion = promo - platformFunded;
+
     const taxOnGoods = taxFromInclusive(g - totalDiscount, line.gstRate);
     // Shipping and handling attract GST at the same rate as the goods they carry.
     const taxOnCharges = taxFromInclusive(ship + cod + wrap, line.gstRate);
-    const gstTotal = taxOnGoods + taxOnCharges;
     const cess = line.cessRate ? taxFromInclusive(g - totalDiscount, line.cessRate) : 0;
-    const { cgst, sgst, igst } = splitGst(gstTotal, isIntraState);
+
+    // The split is authoritative, not the pre-split sum: CGST and SGST must be exactly
+    // equal on an intra-state invoice, which can move the total by one paisa. Taking
+    // `split.total` keeps taxable value, the GST components and the payable consistent
+    // with each other and with the database's breakdown_tax_total constraint.
+    const split = splitGst(taxOnGoods + taxOnCharges, isIntraState);
+    const gstTotal = split.total;
+    const { cgst, sgst, igst } = split;
 
     return {
       lineKey: line.lineKey,
@@ -422,9 +450,9 @@ export function computePricing(ctx: PricingContext): PricingResult {
       unitSellingPricePaise: line.unitSellingPricePaise,
       grossPaise: g,
       sellerDiscountPaise: seller,
-      platformDiscountPaise: platform,
+      platformDiscountPaise: platformFunded,
       couponDiscountPaise: coup,
-      promotionDiscountPaise: promo,
+      promotionDiscountPaise: sellerFundedPromotion,
       bankOfferDiscountPaise: bank,
       totalDiscountPaise: totalDiscount,
       shippingPaise: ship,

@@ -39,9 +39,14 @@ describe('computePricing', () => {
     expect(result.sellerDiscountPaise).toBe(500000);
     expect(result.totalPayablePaise).toBe(12990000);
 
-    // Rs.1,29,900 inclusive of 18% GST → tax 19,815.25 → 1981525 paise
-    expect(line.totalTaxPaise).toBe(1981525);
-    expect(line.cgstPaise + line.sgstPaise).toBe(1981525);
+    // Rs.1,29,900 inclusive of 18% GST → tax 19,815.25 → 1981525 paise, which is odd.
+    // CGST and SGST must be identical on an intra-state invoice, so each half rounds to
+    // 990763 and the recorded total becomes 1981526 — one paisa more than the raw
+    // figure, taken out of the taxable value so the line still closes.
+    expect(line.cgstPaise).toBe(line.sgstPaise);
+    expect(line.cgstPaise).toBe(990763);
+    expect(line.totalTaxPaise).toBe(1981526);
+    expect(line.cgstPaise + line.sgstPaise).toBe(1981526);
     expect(line.igstPaise).toBe(0);
     expect(line.taxableValuePaise + line.totalTaxPaise).toBe(line.totalPayablePaise);
   });
@@ -75,9 +80,14 @@ describe('computePricing', () => {
       }),
     );
 
-    // 10% of Rs.1,29,900 = Rs.12,990, capped to Rs.2,000
-    expect(result.promotionDiscountPaise).toBe(200000);
+    // 10% of Rs.1,29,900 = Rs.12,990, capped to Rs.2,000.
+    // The promotion is PLATFORM funded, so the whole reduction is attributed to
+    // platformDiscountPaise and none to promotionDiscountPaise. The two are
+    // complementary parts of the same reduction, never duplicates of it.
     expect(result.platformDiscountPaise).toBe(200000);
+    expect(result.promotionDiscountPaise).toBe(0);
+    expect(result.platformDiscountPaise + result.promotionDiscountPaise).toBe(200000);
+    expect(result.totalDiscountPaise).toBe(200000);
     expect(result.totalPayablePaise).toBe(12990000 - 200000);
   });
 
@@ -288,7 +298,14 @@ describe('computePricing', () => {
       }),
     );
 
-    expect(result.promotionDiscountPaise).toBe(50000);
+    // The point of the test is that the second promotion was suppressed, so the total
+    // reduction is Rs.500 and not Rs.1,000. Both promotions are PLATFORM funded, so the
+    // whole amount lands in platformDiscountPaise; asserting the total is what actually
+    // pins the exclusivity behaviour.
+    expect(result.totalDiscountPaise).toBe(50000);
+    expect(result.platformDiscountPaise).toBe(50000);
+    expect(result.promotionDiscountPaise).toBe(0);
+    expect(result.totalPayablePaise).toBe(12990000 - 50000);
   });
 
   it('closes the arithmetic: gross - discounts + charges = payable', () => {

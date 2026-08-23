@@ -1,0 +1,185 @@
+/**
+ * Canonical error codes (docs/API_CONVENTIONS.md §4).
+ *
+ * Clients branch on `code`, never on `message`. Adding a code is additive; changing
+ * the meaning of an existing one is a breaking change.
+ */
+export const ERROR_CODES = [
+  'AUTH_REQUIRED',
+  'AUTH_INVALID_TOKEN',
+  'AUTH_TOKEN_EXPIRED',
+  'AUTH_MFA_REQUIRED',
+  'FORBIDDEN',
+  'PERMISSION_DENIED',
+  'ACCOUNT_SUSPENDED',
+  'SELLER_NOT_APPROVED',
+  'VALIDATION_FAILED',
+  'RESOURCE_NOT_FOUND',
+  'CONFLICT',
+  'VERSION_CONFLICT',
+  'IDEMPOTENCY_KEY_REQUIRED',
+  'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD',
+  'IDEMPOTENCY_REQUEST_IN_PROGRESS',
+  'RATE_LIMITED',
+  'MAINTENANCE_MODE',
+  'APP_UPDATE_REQUIRED',
+  'CART_EMPTY',
+  'CART_ITEM_UNAVAILABLE',
+  'LISTING_NOT_SELLABLE',
+  'PRICE_CHANGED',
+  'INVENTORY_UNAVAILABLE',
+  'RESERVATION_EXPIRED',
+  'COUPON_INVALID',
+  'COUPON_EXPIRED',
+  'COUPON_LIMIT_REACHED',
+  'PROMOTION_NOT_APPLICABLE',
+  'ADDRESS_INVALID',
+  'PINCODE_NOT_SERVICEABLE',
+  'COD_NOT_AVAILABLE',
+  'CHECKOUT_SESSION_EXPIRED',
+  'ORDER_NOT_CANCELLABLE',
+  'INVALID_STATE_TRANSITION',
+  'PAYMENT_FAILED',
+  'PAYMENT_ALREADY_CAPTURED',
+  'PAYMENT_VERIFICATION_FAILED',
+  'REFUND_NOT_ALLOWED',
+  'REFUND_AMOUNT_EXCEEDS_CAPTURED',
+  'RETURN_NOT_ELIGIBLE',
+  'RETURN_WINDOW_CLOSED',
+  'SHIPPING_UNAVAILABLE',
+  'PROVIDER_UNAVAILABLE',
+  'SETTLEMENT_NOT_READY',
+  'INSUFFICIENT_BALANCE',
+  'ADJUSTMENT_NOT_APPROVED',
+  'INTERNAL_ERROR',
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+/**
+ * Custom SQLSTATEs raised by database functions, mapped to API error codes.
+ * See docs/DATABASE.md §4. The database is the authority on these invariants, so the
+ * API translates rather than re-checks.
+ */
+export const SQLSTATE_TO_ERROR_CODE: Record<string, ErrorCode> = {
+  NM001: 'INVENTORY_UNAVAILABLE',
+  NM002: 'INVALID_STATE_TRANSITION',
+  NM003: 'CONFLICT',
+  NM004: 'RESERVATION_EXPIRED',
+  NM005: 'ADJUSTMENT_NOT_APPROVED',
+  NM006: 'REFUND_AMOUNT_EXCEEDS_CAPTURED',
+  NM007: 'SETTLEMENT_NOT_READY',
+  // Standard codes that carry domain meaning in this schema.
+  '23505': 'CONFLICT', // unique_violation
+  '23503': 'RESOURCE_NOT_FOUND', // foreign_key_violation
+  '23514': 'VALIDATION_FAILED', // check_violation
+  '23502': 'VALIDATION_FAILED', // not_null_violation
+  '42501': 'PERMISSION_DENIED', // insufficient_privilege
+  '2F004': 'PERMISSION_DENIED',
+  '55P03': 'CONFLICT', // lock_not_available
+  '40001': 'CONFLICT', // serialization_failure
+  '40P01': 'CONFLICT', // deadlock_detected
+  '57014': 'PROVIDER_UNAVAILABLE', // query_canceled (statement timeout)
+};
+
+export const ERROR_STATUS: Record<ErrorCode, number> = {
+  AUTH_REQUIRED: 401,
+  AUTH_INVALID_TOKEN: 401,
+  AUTH_TOKEN_EXPIRED: 401,
+  AUTH_MFA_REQUIRED: 401,
+  FORBIDDEN: 403,
+  PERMISSION_DENIED: 403,
+  ACCOUNT_SUSPENDED: 423,
+  SELLER_NOT_APPROVED: 403,
+  VALIDATION_FAILED: 400,
+  RESOURCE_NOT_FOUND: 404,
+  CONFLICT: 409,
+  VERSION_CONFLICT: 409,
+  IDEMPOTENCY_KEY_REQUIRED: 400,
+  IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD: 409,
+  IDEMPOTENCY_REQUEST_IN_PROGRESS: 409,
+  RATE_LIMITED: 429,
+  MAINTENANCE_MODE: 503,
+  APP_UPDATE_REQUIRED: 426,
+  CART_EMPTY: 422,
+  CART_ITEM_UNAVAILABLE: 422,
+  LISTING_NOT_SELLABLE: 422,
+  PRICE_CHANGED: 409,
+  INVENTORY_UNAVAILABLE: 409,
+  RESERVATION_EXPIRED: 410,
+  COUPON_INVALID: 422,
+  COUPON_EXPIRED: 422,
+  COUPON_LIMIT_REACHED: 422,
+  PROMOTION_NOT_APPLICABLE: 422,
+  ADDRESS_INVALID: 422,
+  PINCODE_NOT_SERVICEABLE: 422,
+  COD_NOT_AVAILABLE: 422,
+  CHECKOUT_SESSION_EXPIRED: 410,
+  ORDER_NOT_CANCELLABLE: 409,
+  INVALID_STATE_TRANSITION: 409,
+  PAYMENT_FAILED: 402,
+  PAYMENT_ALREADY_CAPTURED: 409,
+  PAYMENT_VERIFICATION_FAILED: 400,
+  REFUND_NOT_ALLOWED: 422,
+  REFUND_AMOUNT_EXCEEDS_CAPTURED: 422,
+  RETURN_NOT_ELIGIBLE: 422,
+  RETURN_WINDOW_CLOSED: 422,
+  SHIPPING_UNAVAILABLE: 422,
+  PROVIDER_UNAVAILABLE: 502,
+  SETTLEMENT_NOT_READY: 409,
+  INSUFFICIENT_BALANCE: 422,
+  ADJUSTMENT_NOT_APPROVED: 409,
+  INTERNAL_ERROR: 500,
+};
+
+/** Human-readable default messages. Clients localise from `code`. */
+export const ERROR_MESSAGES: Record<ErrorCode, string> = {
+  AUTH_REQUIRED: 'Sign in to continue.',
+  AUTH_INVALID_TOKEN: 'Your session is invalid. Sign in again.',
+  AUTH_TOKEN_EXPIRED: 'Your session has expired. Sign in again.',
+  AUTH_MFA_REQUIRED: 'Additional verification is required.',
+  FORBIDDEN: 'You do not have access to this resource.',
+  PERMISSION_DENIED: 'You do not have permission to perform this action.',
+  ACCOUNT_SUSPENDED: 'This account is suspended. Contact support.',
+  SELLER_NOT_APPROVED: 'This seller account is not approved for this action.',
+  VALIDATION_FAILED: 'The request contains invalid data.',
+  RESOURCE_NOT_FOUND: 'The requested resource was not found.',
+  CONFLICT: 'The request conflicts with the current state.',
+  VERSION_CONFLICT: 'This record changed while you were editing it.',
+  IDEMPOTENCY_KEY_REQUIRED: 'An Idempotency-Key header is required for this operation.',
+  IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD:
+    'This idempotency key was already used with a different request body.',
+  IDEMPOTENCY_REQUEST_IN_PROGRESS: 'An identical request is already being processed.',
+  RATE_LIMITED: 'Too many requests. Try again shortly.',
+  MAINTENANCE_MODE: 'NovaMart is temporarily unavailable for maintenance.',
+  APP_UPDATE_REQUIRED: 'Update the app to continue.',
+  CART_EMPTY: 'Your cart is empty.',
+  CART_ITEM_UNAVAILABLE: 'One or more items in your cart are no longer available.',
+  LISTING_NOT_SELLABLE: 'This item is not available for purchase right now.',
+  PRICE_CHANGED: 'The price changed. Review your order before paying.',
+  INVENTORY_UNAVAILABLE: 'Requested quantity is unavailable.',
+  RESERVATION_EXPIRED: 'Your reservation expired. Start checkout again.',
+  COUPON_INVALID: 'This coupon is not valid.',
+  COUPON_EXPIRED: 'This coupon has expired.',
+  COUPON_LIMIT_REACHED: 'This coupon has reached its usage limit.',
+  PROMOTION_NOT_APPLICABLE: 'This offer does not apply to your order.',
+  ADDRESS_INVALID: 'The delivery address is incomplete or invalid.',
+  PINCODE_NOT_SERVICEABLE: 'We do not deliver to this pincode yet.',
+  COD_NOT_AVAILABLE: 'Cash on delivery is not available for this order.',
+  CHECKOUT_SESSION_EXPIRED: 'Your checkout session expired. Start again.',
+  ORDER_NOT_CANCELLABLE: 'This order can no longer be cancelled.',
+  INVALID_STATE_TRANSITION: 'This action is not allowed in the current state.',
+  PAYMENT_FAILED: 'The payment could not be completed.',
+  PAYMENT_ALREADY_CAPTURED: 'This payment has already been captured.',
+  PAYMENT_VERIFICATION_FAILED: 'Payment verification failed.',
+  REFUND_NOT_ALLOWED: 'A refund is not permitted for this item.',
+  REFUND_AMOUNT_EXCEEDS_CAPTURED: 'The refund exceeds the amount collected.',
+  RETURN_NOT_ELIGIBLE: 'This item is not eligible for return.',
+  RETURN_WINDOW_CLOSED: 'The return window for this item has closed.',
+  SHIPPING_UNAVAILABLE: 'No delivery option is available for this address.',
+  PROVIDER_UNAVAILABLE: 'A downstream service is unavailable. Try again shortly.',
+  SETTLEMENT_NOT_READY: 'This settlement is not ready to process.',
+  INSUFFICIENT_BALANCE: 'Insufficient balance for this operation.',
+  ADJUSTMENT_NOT_APPROVED: 'This adjustment has not been approved.',
+  INTERNAL_ERROR: 'Something went wrong. Try again.',
+};

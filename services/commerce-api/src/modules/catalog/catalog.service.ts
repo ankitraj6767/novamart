@@ -28,7 +28,7 @@ export class CatalogService {
   constructor(
     private readonly db: DatabaseService,
     private readonly redis: RedisService,
-  ) {}
+  ) { }
 
   /** Full category tree, assembled once and cached: read on nearly every page. */
   async categoryTree(): Promise<CategoryDto[]> {
@@ -202,8 +202,20 @@ export class CatalogService {
     return rows.map((r) => r.id);
   }
 
-  /** Product detail page: identity, media, variants, specs and every competing offer. */
-  async productDetail(slug: string, pincode?: string): Promise<ProductDetailDto> {
+  /**
+   * Product detail page.
+   *
+   * The Buy Box and the competing-offer list are always scoped to ONE SKU. Comparing
+   * a 256 GB offer against a 512 GB offer would show the customer a cheaper "other
+   * seller" for a different product, which is misleading and a real trust problem.
+   *
+   * Target SKU resolution: the requested variant, else the product's default variant,
+   * else whichever variant has the strongest offer.
+   */
+  async productDetail(
+    slug: string,
+    options: { variantId?: string; pincode?: string } = {},
+  ): Promise<ProductDetailDto> {
     const [product] = await this.db.sql<
       Array<{
         id: string;
@@ -267,8 +279,10 @@ export class CatalogService {
         select vl.listing_id, vl.seller_id, vl.seller_name, vl.seller_rating,
                vl.condition, vl.mrp_paise, vl.selling_price_paise, vl.discount_percentage,
                vl.available_quantity, vl.fulfillment_model, vl.handling_time_days,
-               vl.is_buy_box_winner, vl.buy_box_score, vl.sku_id, vl.variant_id, vl.variant_label
+               vl.is_buy_box_winner, vl.buy_box_score, vl.sku_id, vl.variant_id,
+               vl.variant_label, pv.is_default as is_default_variant, pv.display_order
           from catalog.v_sellable_listings vl
+          join catalog.product_variants pv on pv.id = vl.variant_id
          where vl.product_id = ${product.id}
          order by vl.is_buy_box_winner desc, vl.buy_box_score desc nulls last, vl.selling_price_paise
       `,
@@ -289,9 +303,21 @@ export class CatalogService {
       >`
         select ad.code, ad.name, ad.unit,
                coalesce(ca.is_key_specification, false) as is_key,
-               coalesce(ao.label, pav.value_text, pav.value_number::text,
-                        case when pav.value_boolean then 'Yes' else 'No' end,
-                        pav.value_date::text, '') as value
+               coalesce(
+                 ao.label,
+                 pav.value_text,
+                 -- trim_scale drops the trailing zeros NUMERIC(18,6) would otherwise
+                 -- render: 6.700000 → '6.7', 5200.000000 → '5200'. The unit is then
+                 -- appended for display.
+                 case when pav.value_number is not null then
+                   trim_scale(pav.value_number)::text || coalesce(' ' || ad.unit, '')
+                 end,
+                 case when pav.value_boolean is not null then
+                   case when pav.value_boolean then 'Yes' else 'No' end
+                 end,
+                 pav.value_date::text,
+                 ''
+               ) as value
           from catalog.product_attribute_values pav
           join catalog.attribute_definitions ad on ad.id = pav.attribute_id
           left join catalog.attribute_options ao on ao.id = pav.option_id
@@ -322,19 +348,37 @@ export class CatalogService {
       `,
     ]);
 
-    const buyBox = offers.find((o) => o.is_buy_box_winner) ?? offers[0] ?? null;
     const ratingRow = rating[0];
     const policyRow = policy[0];
 
-    // Variants are derived from the sellable offers: a variant nobody stocks is not
-    // presented as selectable.
+    // One offer per variant for the selector, and it must be the SAME offer the Buy Box
+    // would show for that variant. Showing a cheaper non-winning price on the chip and
+    // then a higher price once selected reads as a bait-and-switch.
     const variantMap = new Map<string, OfferRow>();
     for (const offer of offers) {
       const existing = variantMap.get(offer.variant_id);
-      if (!existing || offer.selling_price_paise < existing.selling_price_paise) {
+      if (!existing) {
         variantMap.set(offer.variant_id, offer);
+        continue;
       }
+      const better =
+        (offer.is_buy_box_winner && !existing.is_buy_box_winner) ||
+        (offer.is_buy_box_winner === existing.is_buy_box_winner &&
+          Number(offer.selling_price_paise) < Number(existing.selling_price_paise));
+      if (better) variantMap.set(offer.variant_id, offer);
     }
+
+    // Resolve the single SKU this page is about.
+    const requestedVariant = options.variantId
+      ? offers.find((o) => o.variant_id === options.variantId)
+      : undefined;
+    const defaultVariant = offers.find((o) => o.is_default_variant);
+    const targetOffer = requestedVariant ?? defaultVariant ?? offers[0];
+    const targetSkuId = targetOffer?.sku_id ?? null;
+
+    // Every offer for that SKU, best first. This is an apples-to-apples comparison.
+    const skuOffers = targetSkuId ? offers.filter((o) => o.sku_id === targetSkuId) : [];
+    const buyBox = skuOffers.find((o) => o.is_buy_box_winner) ?? skuOffers[0] ?? null;
 
     const card = buyBox ? this.offerToCard(product, buyBox, media[0]) : null;
 
@@ -371,15 +415,19 @@ export class CatalogService {
         height: m.height_px,
         isPrimary: m.is_primary,
       })),
-      variants: [...variantMap.values()].map((offer) => ({
-        id: offer.variant_id,
-        label: offer.variant_label,
-        isDefault: offer.listing_id === buyBox?.listing_id,
-        skuId: offer.sku_id,
-        attributes: [],
-        inStock: offer.available_quantity > 0,
-        price: money(Number(offer.selling_price_paise)),
-      })),
+      variants: [...variantMap.values()]
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((offer) => ({
+          id: offer.variant_id,
+          label: offer.variant_label,
+          // Reflects which variant this page is currently showing, so the client can
+          // mark the active chip without a second round trip.
+          isDefault: offer.sku_id === targetSkuId,
+          skuId: offer.sku_id,
+          attributes: [],
+          inStock: offer.available_quantity > 0,
+          price: money(Number(offer.selling_price_paise)),
+        })),
       specifications: this.groupSpecifications(specs),
       attributes: attributes.map((a) => ({
         code: a.code,
@@ -404,7 +452,10 @@ export class CatalogService {
             : 'Not returnable',
       },
       buyBox: buyBox ? this.toOffer(buyBox) : null,
-      otherOffers: offers.filter((o) => o.listing_id !== buyBox?.listing_id).map((o) => this.toOffer(o)),
+      // Same SKU only — never a different variant dressed up as a cheaper offer.
+      otherOffers: skuOffers
+        .filter((o) => o.listing_id !== buyBox?.listing_id)
+        .map((o) => this.toOffer(o)),
       ratingHistogram: {
         '1': ratingRow?.count_1_star ?? 0,
         '2': ratingRow?.count_2_star ?? 0,
@@ -622,4 +673,6 @@ interface OfferRow {
   sku_id: string;
   variant_id: string;
   variant_label: string;
+  is_default_variant: boolean;
+  display_order: number;
 }

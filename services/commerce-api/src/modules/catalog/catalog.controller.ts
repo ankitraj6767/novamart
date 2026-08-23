@@ -37,10 +37,18 @@ export class CatalogController {
     });
   }
 
+  /**
+   * `variantId` selects which variant the page is about. The Buy Box and competing
+   * offers are always scoped to that one SKU.
+   */
   @Public()
   @Get('products/:slug')
-  async product(@Param('slug') slug: string, @Query('pincode') pincode?: string) {
-    return this.catalog.productDetail(slug, pincode);
+  async product(
+    @Param('slug') slug: string,
+    @Query('variantId') variantId?: string,
+    @Query('pincode') pincode?: string,
+  ) {
+    return this.catalog.productDetail(slug, { variantId, pincode });
   }
 
   @Public()

@@ -122,6 +122,18 @@ export const serverEnvSchema = z
     OUTBOX_BATCH_SIZE: intFromString(100),
     OUTBOX_MAX_ATTEMPTS: intFromString(8),
 
+    /**
+     * Key for application-level encryption of sensitive columns (seller bank account
+     * numbers, KYC document numbers). 32 bytes, base64-encoded.
+     *
+     * Encryption happens in the application rather than via pgcrypto in SQL so the key
+     * never travels as a query parameter, where it could surface in a slow-query log or a
+     * statement sample. Rotating it requires re-encrypting the affected rows, so the
+     * ciphertext carries a key version.
+     */
+    FIELD_ENCRYPTION_KEY: z.string().optional(),
+    FIELD_ENCRYPTION_KEY_VERSION: intFromString(1),
+
     // Worker runtime. Jobs legitimately run longer than an API request (a reconciliation
     // sweep scans a lot of rows), so they get their own ceiling rather than inheriting
     // the API's 15s.
@@ -146,6 +158,10 @@ export const serverEnvSchema = z
 
     require('SUPABASE_SECRET_KEY', 'The backend cannot reach Supabase without a secret key');
     require('SUPABASE_JWKS_URL', 'JWT verification requires the project JWKS URL');
+    require(
+      'FIELD_ENCRYPTION_KEY',
+      'Bank account and KYC document numbers cannot be stored without an encryption key',
+    );
     require('INTERNAL_SERVICE_TOKEN_SECRET', 'Worker-to-API calls must be signed');
     require('TYPESENSE_ADMIN_API_KEY', 'Search indexing requires an admin key');
 

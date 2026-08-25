@@ -90,6 +90,29 @@ export class AppError extends Error {
     const code = asErrorCode(pgError.hint) ?? mapped;
 
     let details: ErrorDetail[] | undefined;
+
+    /**
+     * A foreign-key violation from an API write almost always means the client supplied an
+     * identifier or code that does not exist — a bad state code, an unknown category. The
+     * mapped code alone ("resource not found") does not say WHICH reference failed, which
+     * makes the response useless for fixing the request.
+     *
+     * The constraint name is derived from the referencing column, so surfacing it turns an
+     * opaque 404 into something actionable. It names a column, not data, so it leaks
+     * nothing sensitive.
+     */
+    if (sqlstate === '23503' && pgError.constraint_name) {
+      const field = pgError.constraint_name
+        .replace(/^.*?_/, '')
+        .replace(/_fkey$/, '');
+      details = [
+        {
+          field: field || undefined,
+          issue: 'References a record that does not exist',
+        },
+      ];
+    }
+
     if (pgError.detail) {
       try {
         const parsed = JSON.parse(pgError.detail) as Record<string, unknown>;

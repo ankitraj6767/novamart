@@ -1,0 +1,5 @@
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { money } from '@novamart/api-client';
+import { Badge, Card, EmptyState, PageShell } from '@novamart/ui';
+export default async function OrdersPage() { const orders = await (await api()).get<{ items?: Array<{ id: string; orderNumber: string; status: string; totalPayable: { display: string } }> }>('/orders?limit=30').catch(() => ({ items: [] })); const items = orders.items ?? []; return <PageShell eyebrow="Your account" title="Orders" description="Every order carries its own price snapshot, shipment timeline and support trail."><div className="nm-grid">{items.map((order) => <Link href={`/orders/${order.id}`} key={order.id}><Card><div className="nm-card-header"><div><h2>{order.orderNumber}</h2><p className="nm-muted">{money(order.totalPayable?.display ?? 0)}</p></div><Badge tone={order.status === 'DELIVERED' ? 'success' : 'accent'}>{order.status}</Badge></div></Card></Link>)}</div>{items.length === 0 && <EmptyState title="No orders yet" description="When you place your first order, delivery progress and invoices will appear here." />}</PageShell>; }

@@ -3,6 +3,7 @@ import { money } from '@novamart/domain';
 import type { z } from 'zod';
 import type {
   sellerBankAccountSchema,
+  sellerDocumentSchema,
   sellerRegistrationSchema,
   sellerTaxProfileSchema,
   upsertListingSchema,
@@ -17,6 +18,7 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 type RegistrationInput = z.infer<typeof sellerRegistrationSchema>;
 type TaxProfileInput = z.infer<typeof sellerTaxProfileSchema>;
 type BankAccountInput = z.infer<typeof sellerBankAccountSchema>;
+type DocumentInput = z.infer<typeof sellerDocumentSchema>;
 type ListingInput = z.infer<typeof upsertListingSchema>;
 
 /**
@@ -111,6 +113,23 @@ export class SellerService {
         insert into seller.seller_users (seller_id, user_id, role_code, status, accepted_at)
         values (${sellerId}, ${principal.userId}, 'SELLER_OWNER', 'ACTIVE', now())
       `;
+
+      // seller_users records the business relationship; identity.user_roles is the
+      // authorization source used by the API guard and RLS. Keep both rows in the same
+      // transaction so a newly registered owner can immediately access their seller scope.
+      await this.db.switchActor(tx, {
+        actorId: null,
+        actorType: 'SYSTEM',
+        requestId: RequestContext.requestId(),
+        traceId: RequestContext.traceId(),
+      });
+      await tx`
+        insert into identity.user_roles (user_id, role_id, scope_type, scope_id, granted_by, grant_reason)
+        select ${principal.userId}, r.id, 'seller', ${sellerId}, null, 'Seller registration owner grant'
+          from identity.roles r where r.code = 'SELLER_OWNER'
+        on conflict do nothing
+      `;
+      await this.db.switchActor(tx, RequestContext.sessionContext());
 
       await this.outbox.emit(tx, 'SELLER_REGISTERED', {
         sellerId,
@@ -346,7 +365,7 @@ export class SellerService {
           accepts_new_orders
         ) values (
           ${await this.uniqueWarehouseCode(tx, sellerId)}, ${input.name}, ${sellerId},
-          'SELLER', ${input.contactName}, ${input.contactPhone},
+          'SELLER_PICKUP', ${input.contactName}, ${input.contactPhone},
           ${input.addressLine1}, ${input.addressLine2 ?? null}, ${input.city},
           ${input.stateCode}, ${input.pincode},
           ${input.operatingDays ?? ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']},
@@ -428,6 +447,48 @@ export class SellerService {
     });
 
     return { status: 'UNDER_REVIEW', missing: [] };
+  }
+
+  async addDocument(sellerId: string, input: DocumentInput): Promise<Record<string, unknown>> {
+    const principal = RequestContext.requirePrincipal();
+    await this.assertMembership(sellerId, ['SELLER_OWNER', 'SELLER_ADMIN']);
+    await this.assertEditable(sellerId);
+    if (!input.storagePath.toLowerCase().startsWith(`kyc/${sellerId.toLowerCase()}/`)) throw AppError.forbidden('Document path is outside this seller scope');
+    const masked = input.documentNumber ? this.maskDocumentNumber(input.documentNumber) : null;
+    const encrypted = input.documentNumber ? this.crypto.encrypt(input.documentNumber) : null;
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      await tx`update seller.seller_documents set verification_status = 'EXPIRED', rejection_reason = 'Superseded by a newer upload' where seller_id = ${sellerId} and document_type = ${input.documentType} and verification_status in ('PENDING', 'IN_REVIEW', 'VERIFIED')`;
+      const [row] = await tx<Array<Record<string, unknown>>>`
+        insert into seller.seller_documents (
+          seller_id, document_type, storage_bucket, storage_path, original_filename,
+          mime_type, file_size_bytes, content_hash, document_number_encrypted,
+          document_number_masked, verification_status, uploaded_by, expires_at
+        ) values (
+          ${sellerId}, ${input.documentType}, 'kyc-private', ${input.storagePath}, ${input.originalFilename},
+          ${input.mimeType}, ${input.fileSizeBytes}, ${input.contentHash}, ${encrypted}, ${masked},
+          'PENDING', ${principal.userId}, ${input.expiresAt ?? null}
+        ) returning id, seller_id, document_type, storage_bucket, storage_path,
+                  original_filename, mime_type, file_size_bytes, document_number_masked,
+                  verification_status, created_at
+      `;
+      return row ?? {};
+    });
+  }
+
+  async listDocuments(sellerId: string): Promise<Array<Record<string, unknown>>> {
+    await this.assertMembership(sellerId);
+    return this.db.sql<Array<Record<string, unknown>>>`
+      select id, seller_id, document_type, storage_bucket, storage_path, original_filename,
+             mime_type, file_size_bytes, document_number_masked, verification_status,
+             rejection_reason, verified_at, expires_at, created_at, updated_at
+        from seller.seller_documents where seller_id = ${sellerId} order by created_at desc
+    `;
+  }
+
+  private maskDocumentNumber(value: string): string {
+    const clean = value.replace(/\s/g, '');
+    if (clean.length <= 4) return '*'.repeat(clean.length);
+    return `${clean.slice(0, 2)}${'*'.repeat(Math.max(2, clean.length - 4))}${clean.slice(-2)}`;
   }
 
   // -------------------------------------------------------------------------

@@ -622,6 +622,11 @@ export const platformSettingSchema = z.object({
   validationSchema: z.record(z.unknown()).optional(),
 });
 
+export const novaQuerySchema = z.object({
+  message: z.string().trim().min(3).max(1000),
+  pincode: pincodeSchema.optional(),
+});
+
 export const featureFlagSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().min(2).max(1000),
@@ -667,6 +672,140 @@ export const homeSectionSchema = z.object({
   endsAt: z.string().datetime().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ARCHIVED']).default('DRAFT'),
 });
+
+export const adminCategorySchema = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  name: z.string().trim().min(2).max(120),
+  nameHi: z.string().trim().max(120).optional(),
+  slug: slugSchema,
+  parentId: uuidSchema.nullable().optional(),
+  description: z.string().trim().max(2000).optional(),
+  imageUrl: z.string().url().optional(),
+  displayOrder: z.number().int().min(0).max(10000).default(100),
+  isActive: z.boolean().default(true),
+  showInNavigation: z.boolean().default(true),
+  showInHomeGrid: z.boolean().default(false),
+});
+
+export const adminBrandSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  slug: slugSchema,
+  description: z.string().trim().max(2000).optional(),
+  logoUrl: z.string().url().optional(),
+  websiteUrl: z.string().url().optional(),
+  isFeatured: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  displayOrder: z.number().int().min(0).max(10000).default(100),
+});
+
+export const adminProductSchema = z.object({
+  categoryId: uuidSchema,
+  brandId: uuidSchema.optional(),
+  title: z.string().trim().min(5).max(300),
+  slug: slugSchema,
+  publicId: z.string().trim().min(4).max(60).regex(/^[A-Za-z0-9_-]+$/),
+  subtitle: z.string().trim().max(500).optional(),
+  description: z.string().trim().max(20000).optional(),
+  highlights: z.array(z.string().trim().max(300)).max(20).default([]),
+  searchKeywords: z.array(z.string().trim().max(100)).max(50).default([]),
+  hsnCode: z.string().trim().max(20).optional(),
+  gstRate: z.number().min(0).max(100).optional(),
+});
+
+export const moderationDecisionSchema = z.object({
+  status: z.enum(['ACTIVE', 'INACTIVE', 'REJECTED', 'BLOCKED', 'SUPPRESSED']),
+  reason: z.string().trim().min(5).max(1000).optional(),
+}).refine((value) => !['REJECTED', 'BLOCKED', 'SUPPRESSED'].includes(value.status) || value.reason !== undefined, { message: 'A reason is required for this decision', path: ['reason'] });
+
+export const searchSynonymSchema = z.object({
+  rootTerm: z.string().trim().min(2).max(100),
+  synonyms: z.array(z.string().trim().min(2).max(100)).min(1).max(30),
+  oneWay: z.boolean().default(false),
+  locale: z.enum(['en-IN', 'hi-IN']).default('en-IN'),
+});
+
+export const notificationTemplateSchema = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  channel: z.enum(['PUSH', 'EMAIL', 'SMS', 'WHATSAPP', 'IN_APP']),
+  locale: z.enum(['en-IN', 'hi-IN']).default('en-IN'),
+  triggerEvent: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  category: z.enum(['TRANSACTIONAL', 'MARKETING', 'SECURITY', 'OPERATIONAL']),
+  subject: z.string().trim().max(300).optional(),
+  title: z.string().trim().max(200).optional(),
+  body: z.string().trim().min(1).max(5000),
+  requiredParams: z.array(z.string().regex(/^[A-Za-z0-9_]+$/)).default([]),
+  deepLinkTemplate: z.string().max(500).optional(),
+  dltTemplateId: z.string().max(100).optional(),
+  isActive: z.boolean().default(true),
+  respectsPreferences: z.boolean().default(true),
+  respectsQuietHours: z.boolean().default(true),
+  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
+});
+
+export const campaignSchema = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(2000).optional(),
+  campaignType: z.enum(['SALE_EVENT', 'BRAND_DAY', 'CATEGORY_PUSH', 'SEASONAL', 'NEW_USER', 'WIN_BACK', 'CLEARANCE', 'FESTIVAL']),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  landingSlug: slugSchema.optional(),
+  theme: z.record(z.unknown()).default({}),
+  budgetPaise: z.number().int().nonnegative().optional(),
+  status: z.enum(['DRAFT', 'SCHEDULED', 'LIVE', 'PAUSED', 'ENDED', 'CANCELLED']).default('DRAFT'),
+});
+
+export const inventoryTransferSchema = z.object({
+  sellerId: uuidSchema,
+  sourceWarehouseId: uuidSchema,
+  targetWarehouseId: uuidSchema,
+  reason: z.string().trim().min(10).max(500),
+  expectedArrivalAt: z.string().datetime().optional(),
+  items: z.array(z.object({ skuId: uuidSchema, quantity: z.number().int().positive().max(100000) })).min(1).max(500),
+}).refine((value) => value.sourceWarehouseId !== value.targetWarehouseId, { message: 'Source and target warehouses must differ', path: ['targetWarehouseId'] });
+
+export const stockCountLineSchema = z.object({ skuId: uuidSchema, countedQuantity: z.number().int().nonnegative().max(10000000), scannedBarcode: z.string().trim().max(200).optional(), notes: z.string().trim().max(500).optional() });
+
+export const stockCountSchema = z.object({
+  warehouseId: uuidSchema,
+  countType: z.enum(['CYCLE', 'FULL', 'SPOT', 'INVESTIGATION']).default('CYCLE'),
+  binFilter: z.string().trim().max(100).optional(),
+  lines: z.array(stockCountLineSchema).min(1).max(1000),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+export const appVersionPolicySchema = z.object({
+  app: z.enum(['customer', 'seller', 'delivery', 'warehouse']),
+  platform: z.enum(['android', 'ios']),
+  minimumVersion: z.string().regex(/^\d+(?:\.\d+){0,3}$/),
+  latestVersion: z.string().regex(/^\d+(?:\.\d+){0,3}$/),
+  forceUpdateMessage: z.string().trim().min(5).max(300),
+  softUpdateMessage: z.string().trim().min(5).max(300),
+  storeUrl: z.string().url(),
+  maintenanceMode: z.boolean().default(false),
+  maintenanceMessage: z.string().trim().max(500).optional(),
+  maintenanceUntil: z.string().datetime().optional(),
+}).refine((value) => !value.maintenanceMode || value.maintenanceMessage !== undefined, { message: 'Maintenance message is required when maintenance mode is on', path: ['maintenanceMessage'] });
+
+export const sellerDocumentSchema = z.object({
+  documentType: z.enum(['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR', 'CANCELLED_CHEQUE', 'BANK_STATEMENT', 'INCORPORATION_CERTIFICATE', 'PARTNERSHIP_DEED', 'ADDRESS_PROOF', 'TRADEMARK_CERTIFICATE', 'BRAND_AUTHORISATION', 'FSSAI_LICENSE', 'BIS_CERTIFICATE', 'SIGNATURE', 'OTHER']),
+  storagePath: z.string().trim().regex(/^kyc\/[0-9a-f-]{36}\/[a-z0-9_-]+\/[0-9a-f-]{36}\.(pdf|jpg|jpeg|png)$/i),
+  originalFilename: z.string().trim().max(255),
+  mimeType: z.enum(['application/pdf', 'image/jpeg', 'image/png']),
+  fileSizeBytes: z.number().int().min(1).max(10485760),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/i),
+  documentNumber: z.string().trim().max(80).optional(),
+  expiresAt: z.string().date().optional(),
+});
+
+export const roleGrantSchema = z.object({
+  userId: uuidSchema,
+  roleCode: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  scopeType: z.enum(['seller', 'warehouse', 'region', 'category']).optional(),
+  scopeId: uuidSchema.optional(),
+  expiresAt: z.string().datetime().optional(),
+  reason: z.string().trim().min(10).max(500),
+}).refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined), { message: 'scopeType and scopeId must be supplied together', path: ['scopeId'] });
 
 // ---------------------------------------------------------------------------
 // Seller

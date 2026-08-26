@@ -3,7 +3,8 @@ import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { uuidSchema } from '@novamart/validation';
 import { AppError } from '../../common/errors/app-error';
-import { Public, RateLimit } from '../../common/decorators';
+import { Audit, Public, RateLimit, Permissions } from '../../common/decorators';
+import { PERMISSIONS } from '@novamart/permissions';
 import { parse } from '../../common/validation';
 import { PaymentsService } from './payments.service';
 
@@ -36,6 +37,13 @@ export class PaymentsController {
   @Post('verify')
   async verify(@Body() body: unknown) {
     return this.payments.verifyFromClient(parse(verifyPaymentSchema, body));
+  }
+
+  @Permissions(PERMISSIONS.REFUND_APPROVE)
+  @Audit('refund.process', 'refund')
+  @Post('refunds/:refundId/process')
+  async processRefund(@Param('refundId') refundId: string) {
+    return this.payments.processRefund(parse(uuidSchema, refundId));
   }
 }
 

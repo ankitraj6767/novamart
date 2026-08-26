@@ -291,6 +291,29 @@ export class IdentityService {
     return this.preferences();
   }
 
+  async exportData(): Promise<Record<string, unknown>> {
+    const userId = RequestContext.requirePrincipal().userId;
+    const [profile, addresses, orders, reviews, tickets] = await Promise.all([
+      this.db.sql<Array<Record<string, unknown>>>`select id, email::text, phone::text, full_name, display_name, preferred_locale, account_status, created_at from identity.profiles where id = ${userId}`,
+      this.db.sql<Array<Record<string, unknown>>>`select id, label, recipient_name, address_line1, address_line2, city, state_code, pincode, is_default from identity.addresses where user_id = ${userId} and deleted_at is null order by created_at`,
+      this.db.sql<Array<Record<string, unknown>>>`select id, order_number, status, total_payable_paise::text, placed_at from commerce.orders where user_id = ${userId} order by placed_at desc`,
+      this.db.sql<Array<Record<string, unknown>>>`select id, product_id, rating, title, body, status, created_at from commerce.reviews where user_id = ${userId} order by created_at desc`,
+      this.db.sql<Array<Record<string, unknown>>>`select id, ticket_reference, subject, status, created_at from support.support_tickets where requester_id = ${userId} order by created_at desc`,
+    ]);
+    return { exportedAt: new Date().toISOString(), profile: profile[0] ?? null, addresses, orders, reviews, tickets };
+  }
+
+  async requestDeletion(reason: string): Promise<{ requested: true; status: string }> {
+    const userId = RequestContext.requirePrincipal().userId;
+    const [row] = await this.db.sql<Array<{ account_status: string }>>`
+      update identity.profiles set account_status = 'DELETION_REQUESTED', status_reason = ${reason}, deletion_requested_at = now(), status_changed_at = now(), status_changed_by = ${userId}
+       where id = ${userId} and account_status not in ('DELETED', 'DELETION_REQUESTED')
+       returning account_status
+    `;
+    if (!row) throw new AppError('CONFLICT', 'Account deletion has already been requested or completed');
+    return { requested: true, status: row.account_status };
+  }
+
   private async assertPincodeKnown(pincode: string): Promise<void> {
     const [row] = await this.db.sql<Array<{ is_serviceable: boolean }>>`
       select is_serviceable from fulfillment.pincodes where pincode = ${pincode}

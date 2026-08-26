@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { featureFlagSchema, homeSectionSchema, platformSettingSchema } from '@novamart/validation';
+import { appVersionPolicySchema, featureFlagSchema, homeSectionSchema, platformSettingSchema } from '@novamart/validation';
 import { PERMISSIONS } from '@novamart/permissions';
 import { Audit, Permissions, Public } from '../../common/decorators';
 import { parse } from '../../common/validation';
@@ -51,6 +51,19 @@ export class PlatformAdminController {
   async section(@Body() body: unknown) {
     return this.admin.upsertSection(parse(homeSectionSchema, body));
   }
+
+  @Permissions(PERMISSIONS.SETTING_READ)
+  @Get('app-version-policies')
+  async versions() { return this.admin.versionPolicies(); }
+
+  @Permissions(PERMISSIONS.SETTING_MANAGE)
+  @Audit('platform.app_version_upsert', 'app_version_policy')
+  @Post('app-version-policies')
+  async version(@Body() body: unknown) { return this.admin.upsertVersionPolicy(parse(appVersionPolicySchema, body)); }
+
+  @Permissions(PERMISSIONS.INTEGRATION_MANAGE)
+  @Get('integrations')
+  async integrations() { return this.admin.integrations(); }
 
   @Public()
   @Get('public-settings')

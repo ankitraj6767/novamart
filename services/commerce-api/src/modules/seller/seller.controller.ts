@@ -7,6 +7,7 @@ import {
   sellerBankAccountSchema,
   sellerRegistrationSchema,
   sellerTaxProfileSchema,
+  sellerDocumentSchema,
   stateCodeSchema,
   upsertListingSchema,
   updateOrderItemStatusSchema,
@@ -131,6 +132,18 @@ export class SellerController {
       parse(uuidSchema, sellerId),
       parse(submitReviewSchema, body),
     );
+  }
+
+  @Scope('seller', 'param:sellerId')
+  @Post(':sellerId/documents')
+  async document(@Param('sellerId') sellerId: string, @Body() body: unknown) {
+    return this.seller.addDocument(parse(uuidSchema, sellerId), parse(sellerDocumentSchema, body));
+  }
+
+  @Scope('seller', 'param:sellerId')
+  @Get(':sellerId/documents')
+  async documents(@Param('sellerId') sellerId: string) {
+    return this.seller.listDocuments(parse(uuidSchema, sellerId));
   }
 
   @Scope('seller', 'param:sellerId')

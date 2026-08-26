@@ -23,6 +23,7 @@
     "db:diff": "supabase db diff",
     "db:lint": "supabase db lint --level warning",
     "db:push": "supabase db push",
+    "test:rls": "bash tests/rls/run.sh",
     "db:types": "supabase gen types typescript --local --schema public,identity,catalog,seller,pricing,inventory,commerce,payments,fulfillment,returns,finance,marketing,support,analytics,audit,platform > packages/types/src/generated/database.ts",
     "flutter:pubget": "bash scripts/flutter-pubget.sh",
     "flutter:analyze": "bash scripts/flutter-analyze.sh",
@@ -30,6 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "22.10.5",
+    "eslint": "9.35.0",
+    "eslint-config-next": "16.3.3",
     "prettier": "3.4.2",
     "turbo": "2.3.3",
     "typescript": "5.7.3"

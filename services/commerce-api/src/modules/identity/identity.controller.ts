@@ -7,6 +7,8 @@ import {
   uuidSchema,
 } from '@novamart/validation';
 import { parse } from '../../common/validation';
+import { z } from 'zod';
+import { Audit } from '../../common/decorators';
 import { IdentityService } from './identity.service';
 
 /**
@@ -63,5 +65,14 @@ export class IdentityController {
   @Patch('me/preferences')
   async updatePreferences(@Body() body: unknown) {
     return this.identity.updatePreferences(parse(notificationPreferencesSchema, body));
+  }
+
+  @Get('me/export')
+  async exportData() { return this.identity.exportData(); }
+
+  @Audit('customer.delete_requested', 'profile')
+  @Post('me/delete')
+  async requestDeletion(@Body() body: unknown) {
+    return this.identity.requestDeletion(parse(z.object({ reason: z.string().trim().min(10).max(500) }), body).reason);
   }
 }

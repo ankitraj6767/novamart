@@ -104,7 +104,14 @@ export class FulfillmentService {
 
   async create(input: CreateShipmentInput): Promise<Record<string, unknown>> {
     const principal = RequestContext.requirePrincipal();
+    const idempotencyKey = RequestContext.get()?.idempotencyKey ?? `shipment:${input.orderId}:${input.orderItemIds.slice().sort().join(',')}`;
     const existing = await this.db.sql<Array<Record<string, unknown>>>`
+      select sh.id, sh.shipment_reference, sh.status, sh.awb_number
+        from fulfillment.shipments sh
+       where sh.order_id = ${input.orderId} and sh.idempotency_key = ${idempotencyKey}
+       limit 1
+    `;
+    const existingByItems = existing.length === 0 ? await this.db.sql<Array<Record<string, unknown>>>`
       select sh.id, sh.shipment_reference, sh.status, sh.awb_number
         from fulfillment.shipments sh
         join fulfillment.shipment_items si on si.shipment_id = sh.id
@@ -113,8 +120,9 @@ export class FulfillmentService {
        group by sh.id
        having count(distinct si.order_item_id) = ${input.orderItemIds.length}
        order by sh.created_at desc limit 1
-    `;
-    if (existing[0]) return existing[0];
+    ` : [];
+    const existingShipment = existing[0] ?? existingByItems[0];
+    if (existingShipment) return existingShipment;
 
     const [order] = await this.db.sql<
       Array<{
@@ -217,12 +225,14 @@ export class FulfillmentService {
       >`
         insert into fulfillment.shipments (
           order_id, seller_id, warehouse_id, carrier_id, shipment_mode,
+          idempotency_key,
           provider_shipment_id, awb_number, status, is_cod, cod_amount_paise,
           declared_value_paise, actual_weight_grams, volumetric_weight_grams,
           pickup_pincode, delivery_pincode, delivery_address, pickup_address,
           estimated_delivery_date, promised_delivery_date
         ) values (
           ${input.orderId}, ${sellerId}, ${input.warehouseId}, ${carrier.id}, ${input.shipmentMode},
+          ${idempotencyKey},
           ${providerShipment.providerShipmentId}, ${providerShipment.awbNumber}, 'CREATED',
           ${order.is_cod}, ${authoritativeCod}, ${authoritativeDeclaredValue},
           ${input.actualWeightGrams}, ${input.dimensions ? Math.ceil((input.dimensions.lengthMm * input.dimensions.widthMm * input.dimensions.heightMm) / 5000) : null},

@@ -1,0 +1,26 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["novamart-redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  typesense:
+    image: typesense/typesense:0.25.2
+    command: ["--data-dir", "/data", "--api-key", "${TYPESENSE_ADMIN_API_KEY:-local-typesense-key}", "--listen-port", "8108"]
+    ports: ["8108:8108"]
+    volumes: ["novamart-typesense:/data"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8108/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  novamart-redis:
+  novamart-typesense:

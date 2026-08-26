@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
@@ -29,6 +30,17 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(env.API_BASE_PATH);
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+
+  if (env.APP_ENV !== 'production') {
+    const swagger = new DocumentBuilder()
+      .setTitle('NovaMart Commerce API')
+      .setDescription('Server-authoritative multi-vendor commerce APIs')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addApiKey({ type: 'apiKey', name: 'Idempotency-Key', in: 'header' }, 'Idempotency-Key')
+      .build();
+    SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger), { useGlobalPrefix: true });
+  }
 
   // @fastify/helmet and @fastify/cors declare their plugin types against their own
   // resolved copy of fastify's types, which pnpm isolates from the copy

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { z } from 'zod';
-import type { inventoryAdjustmentSchema, inventoryReceiptSchema } from '@novamart/validation';
+import type { inventoryAdjustmentSchema, inventoryReceiptSchema, inventoryTransferSchema, stockCountSchema } from '@novamart/validation';
 import { AppError } from '../../common/errors/app-error';
 import { RequestContext } from '../../common/context/request-context';
 import { DatabaseService } from '../../infrastructure/database/database.service';
@@ -8,6 +8,8 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 
 type ReceiptInput = z.infer<typeof inventoryReceiptSchema>;
 type AdjustmentInput = z.infer<typeof inventoryAdjustmentSchema>;
+type TransferInput = z.infer<typeof inventoryTransferSchema>;
+type StockCountInput = z.infer<typeof stockCountSchema>;
 
 /**
  * Inventory writes (brief §24).
@@ -350,6 +352,88 @@ export class InventoryService {
        order by il.occurred_at desc
        limit ${query.limit}
     `;
+  }
+
+  async transfers(sellerId: string, limit: number): Promise<Array<Record<string, unknown>>> {
+    await this.assertSellerMembership(sellerId);
+    return this.db.sql<Array<Record<string, unknown>>>`
+      select t.id, t.transfer_reference, t.seller_id, t.source_warehouse_id,
+             sw.name as source_warehouse_name, t.target_warehouse_id,
+             tw.name as target_warehouse_name, t.status, t.reason,
+             t.expected_arrival_at, t.dispatched_at, t.received_at, t.created_at,
+             coalesce(jsonb_agg(jsonb_build_object('skuId', ti.sku_id, 'requested', ti.quantity_requested, 'dispatched', ti.quantity_dispatched, 'received', ti.quantity_received)) filter (where ti.id is not null), '[]'::jsonb) as items
+        from inventory.inventory_transfers t
+        join inventory.warehouses sw on sw.id = t.source_warehouse_id
+        join inventory.warehouses tw on tw.id = t.target_warehouse_id
+        left join inventory.inventory_transfer_items ti on ti.transfer_id = t.id
+       where t.seller_id = ${sellerId}
+       group by t.id, sw.name, tw.name order by t.created_at desc limit ${limit}
+    `;
+  }
+
+  async createTransfer(input: TransferInput): Promise<Record<string, unknown>> {
+    await this.assertSellerMembership(input.sellerId);
+    const principal = RequestContext.requirePrincipal();
+    const [warehouses] = await this.db.sql<Array<{ source_seller_id: string | null; target_seller_id: string | null }>>`
+      select (select seller_id from inventory.warehouses where id = ${input.sourceWarehouseId} and is_active) as source_seller_id,
+             (select seller_id from inventory.warehouses where id = ${input.targetWarehouseId} and is_active) as target_seller_id
+    `;
+    if (!warehouses || warehouses.source_seller_id !== input.sellerId || warehouses.target_seller_id !== input.sellerId) throw AppError.notFound('Warehouse');
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      const [transfer] = await tx<Array<{ id: string; transfer_reference: string; status: string }>>`
+        insert into inventory.inventory_transfers (seller_id, source_warehouse_id, target_warehouse_id, reason, expected_arrival_at, created_by)
+        values (${input.sellerId}, ${input.sourceWarehouseId}, ${input.targetWarehouseId}, ${input.reason}, ${input.expectedArrivalAt ?? null}, ${principal.userId})
+        returning id, transfer_reference, status
+      `;
+      if (!transfer) throw new AppError('INTERNAL_ERROR', 'Transfer was not created');
+      for (const item of input.items) await tx`insert into inventory.inventory_transfer_items (transfer_id, sku_id, quantity_requested) values (${transfer.id}, ${item.skuId}, ${item.quantity})`;
+      return { ...transfer, itemCount: input.items.length };
+    });
+  }
+
+  async dispatchTransfer(transferId: string): Promise<Record<string, unknown>> {
+    const principal = RequestContext.requirePrincipal();
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      const [transfer] = await tx<Array<{ id: string; seller_id: string; status: string }>>`select id, seller_id, status from inventory.inventory_transfers where id = ${transferId} for update`;
+      if (!transfer) throw AppError.notFound('Transfer');
+      await this.assertSellerMembership(transfer.seller_id);
+      const [row] = await tx<Array<{ dispatch_transfer: number }>>`select inventory.dispatch_transfer(${transferId})`;
+      this.logger.log({ transferId, actorId: principal.userId }, 'Inventory transfer dispatched');
+      return { id: transferId, status: 'IN_TRANSIT', itemsDispatched: row?.dispatch_transfer ?? 0 };
+    });
+  }
+
+  async receiveTransfer(transferId: string): Promise<Record<string, unknown>> {
+    const [transfer] = await this.db.sql<Array<{ id: string; seller_id: string }>>`select id, seller_id from inventory.inventory_transfers where id = ${transferId}`;
+    if (!transfer) throw AppError.notFound('Transfer');
+    await this.assertSellerMembership(transfer.seller_id);
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      const [row] = await tx<Array<{ receive_transfer: number }>>`select inventory.receive_transfer(${transferId})`;
+      return { id: transferId, status: 'RECEIVED', itemsReceived: row?.receive_transfer ?? 0 };
+    });
+  }
+
+  async createStockCount(input: StockCountInput): Promise<Record<string, unknown>> {
+    const { sellerId } = await this.assertWarehouseAccess(input.warehouseId);
+    const principal = RequestContext.requirePrincipal();
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      const [count] = await tx<Array<{ id: string }>>`insert into inventory.stock_counts (warehouse_id, count_type, bin_filter, counted_by, status, completed_at, notes) values (${input.warehouseId}, ${input.countType}, ${input.binFilter ?? null}, ${principal.userId}, 'PENDING_REVIEW', now(), ${input.notes ?? null}) returning id`;
+      if (!count) throw new AppError('INTERNAL_ERROR', 'Stock count was not created');
+      let varianceCount = 0;
+      for (const line of input.lines) {
+        const [inventory] = await tx<Array<{ id: string; available_quantity: number }>>`select id, available_quantity from inventory.warehouse_inventory where warehouse_id = ${input.warehouseId} and sku_id = ${line.skuId} and seller_id = ${sellerId} for update`;
+        if (!inventory) throw AppError.notFound('Inventory record');
+        await tx`insert into inventory.stock_count_lines (stock_count_id, warehouse_inventory_id, sku_id, expected_quantity, counted_quantity, scanned_barcode, notes) values (${count.id}, ${inventory.id}, ${line.skuId}, ${inventory.available_quantity}, ${line.countedQuantity}, ${line.scannedBarcode ?? null}, ${line.notes ?? null})`;
+        const delta = line.countedQuantity - inventory.available_quantity;
+        if (delta !== 0) {
+          varianceCount += 1;
+          const adjustmentReason = line.notes && line.notes.trim().length >= 10 ? line.notes.trim() : 'Cycle count variance';
+          await tx`insert into inventory.inventory_adjustments (warehouse_inventory_id, warehouse_id, sku_id, seller_id, adjustment_type, quantity_delta, target_bucket, quantity_before, reason, status, requested_by, idempotency_key) values (${inventory.id}, ${input.warehouseId}, ${line.skuId}, ${sellerId}, 'CYCLE_COUNT', ${delta}, 'AVAILABLE', ${inventory.available_quantity}, ${adjustmentReason}, 'PENDING_APPROVAL', ${principal.userId}, ${`count:${count.id}:${line.skuId}`}) on conflict (idempotency_key) where idempotency_key is not null do nothing`;
+        }
+      }
+      await tx`update inventory.stock_counts set lines_counted = ${input.lines.length}, lines_with_variance = ${varianceCount} where id = ${count.id}`;
+      return { id: count.id, status: 'PENDING_REVIEW', linesCounted: input.lines.length, linesWithVariance: varianceCount };
+    });
   }
 
   // -------------------------------------------------------------------------

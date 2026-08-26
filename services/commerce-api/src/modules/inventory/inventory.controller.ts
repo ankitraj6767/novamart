@@ -3,7 +3,9 @@ import { z } from 'zod';
 import {
   inventoryAdjustmentSchema,
   inventoryReceiptSchema,
+  inventoryTransferSchema,
   offsetPaginationSchema,
+  stockCountSchema,
   uuidSchema,
 } from '@novamart/validation';
 import { PERMISSIONS } from '@novamart/permissions';
@@ -86,4 +88,30 @@ export class InventoryController {
   async ledger(@Param('sellerId') sellerId: string, @Query() query: Record<string, unknown>) {
     return this.inventory.ledger(parse(uuidSchema, sellerId), parse(ledgerQuerySchema, query));
   }
+
+  @Permissions(PERMISSIONS.INVENTORY_READ)
+  @Get('sellers/:sellerId/transfers')
+  async transfers(@Param('sellerId') sellerId: string, @Query('limit') limit?: string) {
+    return this.inventory.transfers(parse(uuidSchema, sellerId), parse(z.coerce.number().int().min(1).max(200).default(50), limit ?? 50));
+  }
+
+  @Permissions(PERMISSIONS.INVENTORY_TRANSFER)
+  @Audit('inventory.transfer_create', 'inventory_transfer')
+  @Post('transfers')
+  async createTransfer(@Body() body: unknown) { return this.inventory.createTransfer(parse(inventoryTransferSchema, body)); }
+
+  @Permissions(PERMISSIONS.INVENTORY_TRANSFER)
+  @Audit('inventory.transfer_dispatch', 'inventory_transfer')
+  @Post('transfers/:transferId/dispatch')
+  async dispatchTransfer(@Param('transferId') id: string) { return this.inventory.dispatchTransfer(parse(uuidSchema, id)); }
+
+  @Permissions(PERMISSIONS.INVENTORY_RECEIVE)
+  @Audit('inventory.transfer_receive', 'inventory_transfer')
+  @Post('transfers/:transferId/receive')
+  async receiveTransfer(@Param('transferId') id: string) { return this.inventory.receiveTransfer(parse(uuidSchema, id)); }
+
+  @Permissions(PERMISSIONS.INVENTORY_COUNT)
+  @Audit('inventory.stock_count', 'stock_count')
+  @Post('counts')
+  async count(@Body() body: unknown) { return this.inventory.createStockCount(parse(stockCountSchema, body)); }
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { z } from 'zod';
 import type {
+  appVersionPolicySchema,
   featureFlagSchema,
   homeSectionSchema,
   platformSettingSchema,
@@ -13,6 +14,7 @@ import { RedisService } from '../../infrastructure/redis/redis.service';
 type SettingInput = z.infer<typeof platformSettingSchema>;
 type FlagInput = z.infer<typeof featureFlagSchema>;
 type SectionInput = z.infer<typeof homeSectionSchema>;
+type VersionInput = z.infer<typeof appVersionPolicySchema>;
 
 @Injectable()
 export class PlatformAdminService {
@@ -84,6 +86,19 @@ export class PlatformAdminService {
              surfaces, audience_segments, audience_states, campaign_id, starts_at, ends_at, status, updated_at
         from marketing.home_sections order by position, code
     `;
+  }
+
+  async versionPolicies(): Promise<Array<Record<string, unknown>>> {
+    return this.db.sql<Array<Record<string, unknown>>>`select id, app, platform, minimum_version, latest_version, force_update_message, soft_update_message, store_url, maintenance_mode, maintenance_message, maintenance_until, updated_at from platform.app_version_policies order by app, platform`;
+  }
+
+  async upsertVersionPolicy(input: VersionInput): Promise<Record<string, unknown>> {
+    const [row] = await this.db.sql<Array<Record<string, unknown>>>`insert into platform.app_version_policies (app, platform, minimum_version, latest_version, force_update_message, soft_update_message, store_url, maintenance_mode, maintenance_message, maintenance_until) values (${input.app}, ${input.platform}, ${input.minimumVersion}, ${input.latestVersion}, ${input.forceUpdateMessage}, ${input.softUpdateMessage}, ${input.storeUrl}, ${input.maintenanceMode}, ${input.maintenanceMessage ?? null}, ${input.maintenanceUntil ?? null}) on conflict (app, platform) do update set minimum_version = excluded.minimum_version, latest_version = excluded.latest_version, force_update_message = excluded.force_update_message, soft_update_message = excluded.soft_update_message, store_url = excluded.store_url, maintenance_mode = excluded.maintenance_mode, maintenance_message = excluded.maintenance_message, maintenance_until = excluded.maintenance_until, updated_at = now() returning id, app, platform, minimum_version, latest_version, maintenance_mode, updated_at`;
+    return row ?? {};
+  }
+
+  async integrations(): Promise<Array<Record<string, unknown>>> {
+    return this.db.sql<Array<Record<string, unknown>>>`select id, integration_type, provider_code, display_name, environment, is_enabled, priority, configuration, secret_references, webhook_path, health_status, health_checked_at, updated_at from platform.integration_settings order by integration_type, priority`;
   }
 
   async upsertSection(input: SectionInput): Promise<Record<string, unknown>> {

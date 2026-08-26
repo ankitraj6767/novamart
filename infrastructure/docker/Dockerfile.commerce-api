@@ -1,0 +1,21 @@
+FROM node:22-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+WORKDIR /workspace
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
+COPY packages ./packages
+COPY services/commerce-api ./services/commerce-api
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+RUN pnpm --filter @novamart/commerce-api build
+
+FROM node:22-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=base /workspace/node_modules ./node_modules
+COPY --from=base /workspace/packages ./packages
+COPY --from=build /workspace/services/commerce-api/dist ./services/commerce-api/dist
+COPY --from=base /workspace/services/commerce-api/package.json ./services/commerce-api/package.json
+CMD ["node", "services/commerce-api/dist/main.js"]

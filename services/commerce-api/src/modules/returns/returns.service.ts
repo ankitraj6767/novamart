@@ -54,6 +54,7 @@ export class ReturnsService {
 
   async create(input: CreateReturnInput): Promise<Record<string, unknown>> {
     const principal = RequestContext.requirePrincipal();
+    const idempotencyKey = RequestContext.get()?.idempotencyKey ?? `return:${input.orderItemId}:${input.reasonCode}:${principal.userId}`;
     const [eligibility] = await this.db.sql<
       Array<{
         is_eligible: boolean;
@@ -129,7 +130,7 @@ export class ReturnsService {
           order_id, user_id, seller_id, request_type, resolution_requested,
           resolution_granted, reason_code, reason_details, customer_comments,
           status, status_reason, eligibility_snapshot, pickup_address,
-          refund_amount_paise, cost_borne_by, approved_by, approved_at
+          refund_amount_paise, cost_borne_by, approved_by, approved_at, idempotency_key
         )
         select ${item.order_id}, ${principal.userId}, ${item.seller_id},
                ${input.resolutionRequested === 'REPLACEMENT' ? 'REPLACEMENT' : 'RETURN'},
@@ -140,17 +141,20 @@ export class ReturnsService {
                ${tx.json({ ...eligibility, createdAt: new Date().toISOString() } as never)},
                ${tx.json((item.delivery_address ?? {}) as never)},
                ${Math.floor((Number(item.total_payable_paise) * input.quantity) / item.quantity)},
-               'SELLER', ${autoApprove ? principal.userId : null}, ${autoApprove ? new Date().toISOString() : null}
+               'SELLER', ${autoApprove ? principal.userId : null}, ${autoApprove ? new Date().toISOString() : null}, ${idempotencyKey}
+        on conflict (idempotency_key) where idempotency_key is not null do nothing
         returning id, return_reference, status
       `;
-      if (!request) throw new AppError('INTERNAL_ERROR', 'Return request was not created');
+      const existingRequest = request ?? (await tx<Array<{ id: string; return_reference: string; status: string }>>`select id, return_reference, status from returns.return_requests where idempotency_key = ${idempotencyKey}`)[0];
+      if (!existingRequest) throw new AppError('INTERNAL_ERROR', 'Return request was not created');
+      if (!request) return existingRequest;
 
       const [returnItem] = await tx<Array<{ id: string }>>`
         insert into returns.return_items (
           return_request_id, order_item_id, sku_id, quantity, reason_code,
           reason_details, refundable_paise
         ) values (
-          ${request.id}, ${input.orderItemId}, ${item.sku_id}, ${input.quantity},
+          ${existingRequest.id}, ${input.orderItemId}, ${item.sku_id}, ${input.quantity},
           ${input.reasonCode}, ${input.reasonDetails ?? null},
           ${Math.floor((Number(item.total_payable_paise) * input.quantity) / item.quantity)}
         ) returning id
@@ -161,7 +165,7 @@ export class ReturnsService {
           insert into returns.return_evidence (
             return_request_id, return_item_id, evidence_type, uploaded_by_type,
             uploaded_by, storage_path, mime_type, file_size_bytes
-          ) values (${request.id}, ${returnItem?.id ?? null}, 'PHOTO', 'CUSTOMER',
+          ) values (${existingRequest.id}, ${returnItem?.id ?? null}, 'PHOTO', 'CUSTOMER',
                     ${principal.userId}, ${path}, 'image/jpeg', 1)
         `;
       }
@@ -184,12 +188,12 @@ export class ReturnsService {
         `;
       }
       await this.outbox.emit(tx, 'RETURN_REQUESTED', {
-        returnRequestId: request.id,
-        returnReference: request.return_reference,
+        returnRequestId: existingRequest.id,
+        returnReference: existingRequest.return_reference,
         orderId: item.order_id,
         userId: item.user_id,
         sellerId: item.seller_id,
-        status: request.status,
+        status: existingRequest.status,
         reasonCode: input.reasonCode,
         orderItemIds: [input.orderItemId],
         refundablePaise: Math.floor(

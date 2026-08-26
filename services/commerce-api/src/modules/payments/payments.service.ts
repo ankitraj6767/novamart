@@ -165,6 +165,82 @@ export class PaymentsService {
     return this.toSessionDto(intent, created.clientSession, created.expiresAt);
   }
 
+  async processRefund(refundId: string): Promise<Record<string, unknown>> {
+    const [refund] = await this.db.critical<Array<{
+      id: string; payment_intent_id: string; order_id: string; order_item_id: string | null;
+      user_id: string; amount_paise: string; reason_code: string; idempotency_key: string | null;
+      status: string; provider: string; provider_payment_id: string | null; refund_reference: string;
+      refund_type: string;
+    }>>`
+      select r.id, r.refund_reference, r.refund_type, r.payment_intent_id, r.order_id, r.order_item_id, r.user_id,
+             r.amount_paise::text, r.reason_code, r.idempotency_key, r.status,
+             pi.provider, pt.provider_transaction_id as provider_payment_id
+        from payments.refunds r
+        join payments.payment_intents pi on pi.id = r.payment_intent_id
+        left join lateral (
+          select provider_transaction_id from payments.payment_transactions
+           where payment_intent_id = pi.id and transaction_type = 'CAPTURE' and status = 'SUCCESS'
+           order by occurred_at desc limit 1
+        ) pt on true
+       where r.id = ${refundId}
+       for update
+    `;
+    if (!refund) throw AppError.notFound('Refund');
+    if (refund.status === 'COMPLETED') return { id: refund.id, status: refund.status, alreadyProcessed: true };
+    if (!refund.provider_payment_id) throw new AppError('REFUND_NOT_ALLOWED', 'No captured provider payment is available for this refund');
+
+    const provider = this.providers.byCode(refund.provider);
+    const outcome = await provider.refund({
+      providerPaymentId: refund.provider_payment_id,
+      amountPaise: Number(refund.amount_paise),
+      idempotencyKey: refund.idempotency_key ?? `refund:${refund.id}`,
+      reason: refund.reason_code,
+    });
+    return this.db.transaction(this.systemContext(), async (tx) => {
+      const [attempt] = await tx<Array<{ attempt_number: number }>>`select coalesce(max(attempt_number), 0) + 1 as attempt_number from payments.refund_attempts where refund_id = ${refund.id}`;
+      await tx`
+        insert into payments.refund_attempts (
+          refund_id, attempt_number, provider, provider_refund_id, amount_paise,
+          status, provider_error_code, provider_error_description, provider_payload,
+          outcome_source, completed_at
+        ) values (
+          ${refund.id}, ${attempt?.attempt_number ?? 1}, ${refund.provider}, ${outcome.providerRefundId},
+          ${Number(refund.amount_paise)}, ${outcome.status}, ${outcome.failureCode ?? (outcome.status === 'FAILED' ? 'PROVIDER_REFUND_FAILED' : null)},
+          ${outcome.failureReason}, ${tx.json(outcome.raw as never)}, 'SERVER_FETCH',
+          ${outcome.status === 'PENDING' || outcome.status === 'SUCCESS' ? new Date().toISOString() : null}
+        )
+      `;
+      const completed = outcome.status === 'SUCCESS';
+      const failed = outcome.status === 'FAILED';
+      await tx`
+        update payments.refunds
+           set status = ${completed ? 'COMPLETED' : failed ? 'FAILED' : 'PROCESSING'},
+               completed_at = ${completed ? new Date().toISOString() : null},
+               failed_at = ${failed ? new Date().toISOString() : null},
+               failure_code = ${failed ? outcome.failureCode ?? 'PROVIDER_REFUND_FAILED' : null},
+               failure_reason = ${failed ? outcome.failureReason : null}
+         where id = ${refund.id}
+      `;
+      if (completed) {
+        await tx`update payments.payment_intents set refunded_paise = refunded_paise + ${Number(refund.amount_paise)}, status = case when refunded_paise + ${Number(refund.amount_paise)} >= captured_paise then 'REFUNDED' else 'PARTIALLY_REFUNDED' end where id = ${refund.payment_intent_id}`;
+        await tx`update commerce.orders set amount_refunded_paise = amount_refunded_paise + ${Number(refund.amount_paise)}, payment_status = case when amount_refunded_paise + ${Number(refund.amount_paise)} >= amount_paid_paise then 'REFUNDED' else 'PARTIALLY_REFUNDED' end where id = ${refund.order_id}`;
+        if (refund.order_item_id) await tx`update commerce.order_items set refunded_paise = refunded_paise + ${Number(refund.amount_paise)}, status = case when status = 'REFUND_PENDING' then 'REFUNDED' else status end where id = ${refund.order_item_id}`;
+      }
+      await this.outbox.emit(tx, completed ? 'REFUND_SUCCESS' : 'REFUND_FAILED', {
+        refundId: refund.id,
+        refundReference: refund.refund_reference,
+        orderId: refund.order_id,
+        orderItemId: refund.order_item_id,
+        userId: refund.user_id,
+        amountPaise: Number(refund.amount_paise),
+        refundType: refund.refund_type,
+        status: completed ? 'COMPLETED' : failed ? 'FAILED' : 'PROCESSING',
+        failureCode: failed ? outcome.failureCode ?? 'PROVIDER_REFUND_FAILED' : null,
+      });
+      return { id: refund.id, status: completed ? 'COMPLETED' : failed ? 'FAILED' : 'PROCESSING', providerRefundId: outcome.providerRefundId };
+    });
+  }
+
   /**
    * Processes a provider webhook.
    *

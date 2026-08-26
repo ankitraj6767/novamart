@@ -1,0 +1,2 @@
+@import '@novamart/ui/styles.css';
+.nm-console { min-height:100vh; }.nm-console-nav { background:#282129; color:#fff7f6; }.nm-console-nav .nm-nav-links { color:#e2c9c6; }.nm-console-nav .nm-brand-mark { background:#db7b62; }

@@ -10,6 +10,7 @@ import { AuthGuard } from './common/guards/auth.guard';
 import { IpRateLimitGuard, PrincipalRateLimitGuard } from './common/guards/rate-limit.guard';
 import { ErrorFilter } from './common/filters/error.filter';
 import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { IdempotencyService } from './common/idempotency/idempotency.service';
 import { contextMiddleware } from './common/middleware/context.middleware';
 import { HealthController } from './modules/health/health.controller';
@@ -45,6 +46,20 @@ import { RiskController } from './modules/risk/risk.controller';
 import { RiskService } from './modules/risk/risk.service';
 import { NotificationsController } from './modules/notifications/notifications.controller';
 import { NotificationsService } from './modules/notifications/notifications.service';
+import { PlatformController } from './modules/platform/platform.controller';
+import { StorageController } from './modules/storage/storage.controller';
+import { StorageService } from './modules/storage/storage.service';
+import { AdminOperationsController } from './modules/admin/admin-operations.controller';
+import { AdminOperationsService } from './modules/admin/admin-operations.service';
+import { NovaController } from './modules/nova/nova.controller';
+import { NovaService } from './modules/nova/nova.service';
+import { AuthController } from './modules/identity/auth.controller';
+import { CatalogAdminController } from './modules/admin/catalog-admin.controller';
+import { CatalogAdminService } from './modules/admin/catalog-admin.service';
+import { MarketingAdminController } from './modules/admin/marketing-admin.controller';
+import { MarketingAdminService } from './modules/admin/marketing-admin.service';
+import { IdentityAdminController } from './modules/admin/identity-admin.controller';
+import { IdentityAdminService } from './modules/admin/identity-admin.service';
 import { ShippingProviderRegistry } from './infrastructure/providers/shipping/shipping-provider.registry';
 import { FulfillmentController } from './modules/fulfillment/fulfillment.controller';
 import { FulfillmentService } from './modules/fulfillment/fulfillment.service';
@@ -97,6 +112,14 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     CustomerExperienceController,
     RiskController,
     NotificationsController,
+    PlatformController,
+    StorageController,
+    AdminOperationsController,
+    NovaController,
+    AuthController,
+    CatalogAdminController,
+    MarketingAdminController,
+    IdentityAdminController,
     ...developmentOnlyControllers,
   ],
   providers: [
@@ -131,6 +154,12 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     CustomerExperienceService,
     RiskService,
     NotificationsService,
+    StorageService,
+    AdminOperationsService,
+    NovaService,
+    CatalogAdminService,
+    MarketingAdminService,
+    IdentityAdminService,
     /**
      * Guards run in registration order, and this order is load-bearing:
      *
@@ -145,6 +174,7 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PrincipalRateLimitGuard },
     { provide: APP_FILTER, useClass: ErrorFilter },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_INTERCEPTOR, useClass: EnvelopeInterceptor },
   ],
 })

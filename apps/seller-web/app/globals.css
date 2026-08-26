@@ -1,0 +1,2 @@
+@import '@novamart/ui/styles.css';
+.nm-console { min-height:100vh; }.nm-console .nm-page { padding-top:38px; }.nm-console-nav { background:#102126; color:#e9f3f2; }.nm-console-nav .nm-nav-links { color:#b9cdcc; }.nm-console-nav .nm-brand-mark { background:var(--nm-accent); }

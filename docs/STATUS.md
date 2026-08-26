@@ -1,7 +1,7 @@
 # NovaMart — Build Status
 
-Honest accounting of what exists and is verified, versus what is designed but not yet
-implemented. Updated: 2026-08-25.
+Honest accounting of what exists and is verified, versus what still needs production
+credentials or deeper client polish. Updated: 2026-08-26.
 
 ---
 
@@ -35,8 +35,10 @@ tests/concurrency/run-oversell-test.sh 300 30
 → RESULT: PASS
 ```
 
-Full verification state: `pnpm typecheck` clean (15 tasks), `pnpm test` 70 tests passing,
-`supabase db reset` exits 0 applying **29 migrations** with **zero tables missing RLS**.
+Full verification state: `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm flutter:analyze`,
+and `pnpm flutter:test` pass; `pnpm test` passes 75 unit tests; `supabase db reset` exits 0
+applying **32 migrations** with **zero tables missing RLS**. The customer storefront also
+passes a browser smoke check with seeded catalogue cards rendered and no Next.js error overlay.
 
 ### Bugs this exercise found and fixed
 
@@ -66,6 +68,9 @@ Building the vertical was what proved these; none were visible from the schema a
 - Payment confirmation ran with the **customer's** actor type, but
   `PENDING_PAYMENT → PAYMENT_CONFIRMED` is SYSTEM-only. Payment outcomes now run under a
   SYSTEM context while still recording who prompted them.
+- Cancellation searched for both `ACTIVE` and `CONFIRMED` reservations, while the release
+  function only handled `ACTIVE`. Migration `20260826100000` now releases both pre-dispatch
+  states and the sequential checkout + seller E2E run passes without stranded stock.
 
 ---
 
@@ -84,17 +89,17 @@ Building the vertical was what proved these; none were visible from the schema a
 
 ### Database — the substantive deliverable
 
-27 migrations covering all sixteen domains. **Verified by `supabase db reset` exiting 0
+32 migrations covering all sixteen domains. **Verified by `supabase db reset` exiting 0
 on a fresh database with zero errors:**
 
 | Metric                       | Value                    |
 | ---------------------------- | ------------------------ |
-| Migrations                   | 27                       |
-| Tables                       | 172                      |
+| Migrations                   | 32                       |
+| Tables                       | 189                      |
 | Tables missing RLS           | **0**                    |
-| RLS policies                 | 186                      |
+| RLS policies                 | 187                      |
 | Indexes                      | ~800                     |
-| Functions                    | 111                      |
+| Functions                    | 117                      |
 | Permissions / roles / grants | 106 / 22 / 464           |
 | Storage buckets              | 10 (4 public, 6 private) |
 
@@ -139,11 +144,7 @@ This is requirement §66 of the brief, proven rather than asserted.
 
 ---
 
-## Designed, not yet implemented
-
-Everything below has a settled contract (schema, API conventions, security model) but no
-code yet. The database is deliberately ahead because it is the hardest part to change
-later.
+## Implemented application surfaces
 
 ### Backend — `services/commerce-api`
 
@@ -184,13 +185,18 @@ permissioned API operations; external payout credentials are still a business de
 
 ### Web — Next.js
 
-The repository still has no `apps/` source tree. The API contracts are now documented in
-`docs/API.md`, but the five Next.js applications remain a separate implementation milestone.
+Five Next.js 16.3.3 applications now build and lint: customer storefront, seller center,
+admin control centre, operations console, and support console. The customer app has public
+home/category/search/PDP routes plus cart, checkout, orders, account and support routes.
+Role consoles expose dashboard, catalog, order, inventory, fulfilment, returns, finance,
+CMS, risk and support queue surfaces against the API.
 
 ### Mobile — Flutter
 
-The repository still has no Flutter source tree. Customer/seller/operations APIs now expose
-the core workflows those clients need, but the four Flutter applications remain unimplemented.
+Four Flutter applications now compile and pass widget tests: customer, seller, delivery and
+warehouse. They share Riverpod, GoRouter, Dio and Supabase-ready configuration, with role
+navigation shells and health/API wiring. Store signing, push credentials and the remaining
+screen-by-screen native polish still require product assets and business credentials.
 
 ### Integrations
 
@@ -202,16 +208,16 @@ tests never touch a real provider.
 
 ### Remaining seed files
 
-`03_catalog` through `08_customers` now carry real data (18 categories, 6 brands, 5
+`03_catalog` through `09_orders` now carry real data (18 categories, 6 brands, 5
 products with 13 SKUs and 15 competing listings, 4 sellers, 4 warehouses, 3 test
-customers with addresses). `07_marketing` and `09_orders` are still placeholders —
-marketing content is currently seeded from `06`. The catalogue is deliberately small; it
-needs breadth before it resembles a marketplace.
+customers with addresses, notification templates, and a delivered prepaid order with
+payment, shipment and tracking history). The catalogue is deliberately small; it needs
+breadth before it resembles a national marketplace.
 
 ### Testing and CI
 
-Vitest unit/integration suites, RLS allow/deny matrix (`tests/rls`), Playwright E2E,
-Flutter widget/integration tests, GitHub Actions pipeline.
+Vitest unit/integration suites, the RLS assertion suite (`tests/rls`), API E2E verticals,
+Flutter widget tests, browser smoke verification, and GitHub Actions pipeline are wired.
 
 ---
 
@@ -244,10 +250,7 @@ These cannot be inferred and block the corresponding integration:
 
 ## Recommended next step
 
-The storefront. `customer-web` against the working API is now the highest-value move: it
-turns a verified purchase path into something a person can actually use, and it will
-surface contract gaps in the same way building checkout surfaced the six bugs above.
-
-After that, in order: the seller console (so a seller can list and fulfil without a
-developer), the outbox dispatcher and workers (so events currently accumulating in
-`platform.outbox_events` are consumed), then shipment creation, returns and settlement.
+Connect production Supabase/Redis/Typesense, payment, logistics, notification and payout
+credentials; then run the release gates in `docs/DEPLOYMENT.md`. The local mock adapters are
+deliberately the only active providers in this workspace, so no external money movement or
+shipment creation was attempted.

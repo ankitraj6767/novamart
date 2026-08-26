@@ -52,13 +52,23 @@ export class NotificationConsumer implements Consumer {
   ];
 
   async handle(event: OutboxEvent, tx: Tx, ctx: WorkerContext): Promise<void> {
-    const userId = this.uuid(event.payload['userId']);
-    if (!userId) {
-      // Seller- and settlement-scoped events have no single customer to notify. Seller
-      // notification routing goes through seller_users and is handled separately.
+    const directUserId = this.uuid(event.payload['userId']);
+    const sellerId = this.uuid(event.payload['sellerId']);
+    const recipientIds = directUserId
+      ? [directUserId]
+      : sellerId
+        ? (
+            await tx<Array<{ user_id: string }>>`
+            select user_id from seller.seller_users
+             where seller_id = ${sellerId} and status = 'ACTIVE'
+               and role_code in ('SELLER_OWNER', 'SELLER_ADMIN', 'SELLER_FINANCE_MANAGER')
+          `
+          ).map((row) => row.user_id)
+        : [];
+    if (recipientIds.length === 0) {
       ctx.logger.debug(
         { eventId: event.id, eventType: event.event_type },
-        'No user on event; nothing to enqueue',
+        'No notification recipients for event',
       );
       return;
     }
@@ -80,42 +90,43 @@ export class NotificationConsumer implements Consumer {
       return;
     }
 
-    const preferences = await this.loadPreferences(tx, userId);
     const params = this.buildParams(event);
 
-    for (const template of templates) {
-      // Match the customer's language where a translation exists, else fall back.
-      if (template.locale !== preferences.locale && template.locale !== 'en-IN') continue;
+    for (const userId of recipientIds) {
+      const preferences = await this.loadPreferences(tx, userId);
+      for (const template of templates) {
+        // Match the customer's language where a translation exists, else fall back.
+        if (template.locale !== preferences.locale && template.locale !== 'en-IN') continue;
 
-      const suppression = this.suppressionReason(template, preferences);
+        const suppression = this.suppressionReason(template, preferences);
 
-      // A template whose parameters are missing would render as "Your order  is
-      // confirmed". Better to record it suppressed and have it show up as a bug.
-      const missing = template.required_params.filter((key) => params[key] === undefined);
-      const reason = suppression ?? (missing.length > 0 ? 'MISSING_PARAMS' : null);
+        // A template whose parameters are missing would render as "Your order  is
+        // confirmed". Better to record it suppressed and have it show up as a bug.
+        const missing = template.required_params.filter((key) => params[key] === undefined);
+        const reason = suppression ?? (missing.length > 0 ? 'MISSING_PARAMS' : null);
 
-      await tx`
-        insert into marketing.notifications (
-          user_id, template_id, template_code, channel, locale, subject, title, body,
-          deep_link, image_url, params, related_type, related_id, category, status,
-          suppression_reason, idempotency_key
-        ) values (
-          ${userId}, ${template.id}, ${template.code}, ${template.channel},
-          ${template.locale},
-          ${template.subject ? this.render(template.subject, params) : null},
-          ${template.title ? this.render(template.title, params) : null},
-          ${this.render(template.body, params)},
-          ${template.deep_link_template ? this.render(template.deep_link_template, params) : null},
-          ${template.image_url},
-          ${tx.json(params as never)},
-          ${event.aggregate_type}, ${event.aggregate_id}, ${template.category},
-          ${reason ? 'SUPPRESSED' : 'QUEUED'},
-          ${reason},
-          ${`${event.id}:${template.code}:${template.channel}`}
-        )
-        -- One notification per (event, template, channel), whatever the redelivery count.
-        on conflict (idempotency_key) where (idempotency_key is not null) do nothing
-      `;
+        await tx`
+          insert into marketing.notifications (
+            user_id, template_id, template_code, channel, locale, subject, title, body,
+            deep_link, image_url, params, related_type, related_id, category, status,
+            suppression_reason, idempotency_key
+          ) values (
+            ${userId}, ${template.id}, ${template.code}, ${template.channel},
+            ${template.locale},
+            ${template.subject ? this.render(template.subject, params) : null},
+            ${template.title ? this.render(template.title, params) : null},
+            ${this.render(template.body, params)},
+            ${template.deep_link_template ? this.render(template.deep_link_template, params) : null},
+            ${template.image_url},
+            ${tx.json(params as never)},
+            ${event.aggregate_type}, ${event.aggregate_id}, ${template.category},
+            ${reason ? 'SUPPRESSED' : 'QUEUED'},
+            ${reason},
+            ${`${event.id}:${userId}:${template.code}:${template.channel}`}
+          )
+          on conflict (idempotency_key) where (idempotency_key is not null) do nothing
+        `;
+      }
     }
   }
 
@@ -213,8 +224,9 @@ export class NotificationConsumer implements Consumer {
    * operations-editable content, so it must not be able to reach into the process.
    */
   private render(template: string, params: Record<string, string>): string {
-    return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) =>
-      params[key] ?? '',
+    return template.replace(
+      /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+      (_match, key: string) => params[key] ?? '',
     );
   }
 

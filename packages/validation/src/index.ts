@@ -333,6 +333,342 @@ export const createAnswerSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Fulfillment, support, finance and administration
+// ---------------------------------------------------------------------------
+
+export const createShipmentSchema = z.object({
+  orderId: uuidSchema,
+  orderItemIds: z.array(uuidSchema).min(1).max(100),
+  warehouseId: uuidSchema,
+  carrierCode: z
+    .string()
+    .regex(/^[A-Z][A-Z0-9_]*$/)
+    .optional(),
+  shipmentMode: z.enum(['SURFACE', 'AIR', 'EXPRESS']).default('SURFACE'),
+  isCod: z.boolean().default(false),
+  codAmountPaise: z.number().int().nonnegative().default(0),
+  declaredValuePaise: z.number().int().nonnegative().optional(),
+  actualWeightGrams: z.number().int().positive(),
+  dimensions: z
+    .object({
+      lengthMm: z.number().int().positive(),
+      widthMm: z.number().int().positive(),
+      heightMm: z.number().int().positive(),
+    })
+    .optional(),
+});
+
+export const trackingUpdateSchema = z
+  .object({
+    shipmentId: uuidSchema.optional(),
+    awbNumber: z.string().trim().min(3).max(120).optional(),
+    providerEventId: z.string().trim().max(200).nullable().optional(),
+    carrierStatusCode: z.string().trim().max(80).nullable().optional(),
+    normalisedStatus: z.enum([
+      'CREATED',
+      'LABEL_GENERATED',
+      'PICKUP_SCHEDULED',
+      'PICKED_UP',
+      'IN_TRANSIT',
+      'REACHED_DESTINATION_HUB',
+      'OUT_FOR_DELIVERY',
+      'DELIVERED',
+      'DELIVERY_FAILED',
+      'RTO_INITIATED',
+      'RTO_IN_TRANSIT',
+      'RTO_DELIVERED',
+      'LOST',
+      'DAMAGED',
+      'CANCELLED',
+    ]),
+    description: z.string().trim().min(2).max(500),
+    location: z.string().trim().max(160).nullable().optional(),
+    locationPincode: pincodeSchema.nullable().optional(),
+    occurredAt: z.string().datetime().optional(),
+    rawPayload: z.record(z.unknown()).default({}),
+  })
+  .refine((value) => value.shipmentId !== undefined || value.awbNumber !== undefined, {
+    message: 'shipmentId or awbNumber is required',
+    path: ['shipmentId'],
+  });
+
+export const returnDecisionSchema = z
+  .object({
+    approved: z.boolean(),
+    reason: z.string().trim().min(5).max(500).optional(),
+  })
+  .refine((value) => value.approved || value.reason !== undefined, {
+    message: 'A reason is required when rejecting a return',
+    path: ['reason'],
+  });
+
+export const returnInspectionSchema = z.object({
+  warehouseId: uuidSchema.optional(),
+  outcome: z.enum(['PASS', 'FAIL', 'PARTIAL_PASS']),
+  checklist: z.record(z.unknown()).default({}),
+  itemMatchesOrder: z.boolean(),
+  originalPackagingPresent: z.boolean(),
+  allAccessoriesPresent: z.boolean(),
+  serialNumberMatches: z.boolean().optional(),
+  physicalDamageFound: z.boolean().default(false),
+  usageSignsFound: z.boolean().default(false),
+  counterfeitSuspected: z.boolean().default(false),
+  grade: z
+    .enum(['A_RESELLABLE', 'B_OPEN_BOX', 'C_REFURBISH', 'D_SCRAP', 'NOT_AS_DESCRIBED'])
+    .optional(),
+  deductionPaise: z.number().int().nonnegative().default(0),
+  deductionReason: z.string().trim().max(500).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export const reviewVoteSchema = z.object({ isHelpful: z.boolean() });
+
+export const reviewReportSchema = z.object({
+  reason: z.enum([
+    'SPAM',
+    'OFFENSIVE',
+    'IRRELEVANT',
+    'FAKE',
+    'PERSONAL_INFO',
+    'PROMOTIONAL',
+    'WRONG_PRODUCT',
+    'OTHER',
+  ]),
+  details: z.string().trim().max(1000).optional(),
+});
+
+export const reviewModerationSchema = z
+  .object({
+    status: z.enum(['PUBLISHED', 'REJECTED', 'HIDDEN']),
+    reason: z.string().trim().min(5).max(500).optional(),
+  })
+  .refine((value) => value.status === 'PUBLISHED' || value.reason !== undefined, {
+    message: 'A reason is required when hiding or rejecting a review',
+    path: ['reason'],
+  });
+
+export const supportTicketSchema = z.object({
+  categoryId: uuidSchema.optional(),
+  subject: z.string().trim().min(3).max(200),
+  description: z.string().trim().min(3).max(5000),
+  orderId: uuidSchema.optional(),
+  orderItemId: uuidSchema.optional(),
+  returnRequestId: uuidSchema.optional(),
+  shipmentId: uuidSchema.optional(),
+  paymentIntentId: uuidSchema.optional(),
+  channel: z.enum(['APP', 'WEB', 'EMAIL', 'PHONE', 'WHATSAPP', 'CHAT', 'INTERNAL']).default('APP'),
+});
+
+export const supportMessageSchema = z.object({
+  body: z.string().trim().min(1).max(10000),
+  isInternal: z.boolean().default(false),
+  macroId: uuidSchema.optional(),
+});
+
+export const supportTicketUpdateSchema = z.object({
+  status: z
+    .enum([
+      'OPEN',
+      'PENDING_AGENT',
+      'PENDING_CUSTOMER',
+      'PENDING_SELLER',
+      'PENDING_THIRD_PARTY',
+      'ESCALATED',
+      'RESOLVED',
+      'CLOSED',
+      'REOPENED',
+    ])
+    .optional(),
+  priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).optional(),
+  assignedTo: uuidSchema.nullable().optional(),
+  assignedTeam: z.string().trim().max(100).optional(),
+  resolutionCode: z.string().trim().max(100).optional(),
+  resolutionNotes: z.string().trim().max(2000).optional(),
+  reason: z.string().trim().min(5).max(500).optional(),
+  csatScore: z.number().int().min(1).max(5).optional(),
+  csatComment: z.string().trim().max(1000).optional(),
+});
+
+export const settlementPeriodSchema = z.object({
+  sellerId: uuidSchema,
+  periodStart: z.string().date(),
+  periodEnd: z.string().date(),
+});
+
+export const payoutSchema = z.object({
+  settlementId: uuidSchema,
+  bankAccountId: uuidSchema,
+  provider: z
+    .enum(['RAZORPAYX', 'CASHFREE_PAYOUTS', 'MANUAL_BANK_TRANSFER', 'MOCK'])
+    .default('MOCK'),
+  payoutMode: z.enum(['IMPS', 'NEFT', 'RTGS', 'UPI']).default('NEFT'),
+});
+
+export const financialAdjustmentSchema = z.object({
+  sellerId: uuidSchema,
+  adjustmentType: z.enum([
+    'GOODWILL_CREDIT',
+    'FEE_WAIVER',
+    'PENALTY',
+    'RECOVERY',
+    'CORRECTION',
+    'PROMOTION_REIMBURSEMENT',
+    'CHARGEBACK_RECOVERY',
+    'WRITE_OFF',
+  ]),
+  direction: z.enum(['CREDIT', 'DEBIT']),
+  amountPaise: z.number().int().positive(),
+  orderId: uuidSchema.optional(),
+  orderItemId: uuidSchema.optional(),
+  reason: z.string().trim().min(15).max(2000),
+  supportingDocuments: z.array(z.string().max(400)).max(10).default([]),
+});
+
+export const riskEventSchema = z.object({
+  subjectType: z.enum(['USER', 'SELLER', 'ORDER', 'PAYMENT', 'DEVICE', 'IP']),
+  subjectId: uuidSchema.optional(),
+  userId: uuidSchema.optional(),
+  sellerId: uuidSchema.optional(),
+  orderId: uuidSchema.optional(),
+  category: z.string().trim().min(2).max(80),
+  ruleCode: z.string().trim().min(2).max(100),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  scoreDelta: z.number().int().min(-100).max(100).default(0),
+  evidence: z.record(z.unknown()).default({}),
+});
+
+export const analyticsEventSchema = z.object({
+  eventType: z.enum([
+    'IMPRESSION',
+    'PRODUCT_VIEW',
+    'CATEGORY_VIEW',
+    'SEARCH',
+    'SEARCH_CLICK',
+    'SEARCH_NO_RESULTS',
+    'FILTER_APPLIED',
+    'ADD_TO_CART',
+    'REMOVE_FROM_CART',
+    'CART_VIEW',
+    'WISHLIST_ADD',
+    'WISHLIST_REMOVE',
+    'ADDRESS_SELECTED',
+    'PAYMENT_SELECTED',
+    'COUPON_APPLIED',
+    'COUPON_FAILED',
+    'REVIEW_SUBMITTED',
+    'BANNER_CLICK',
+    'SECTION_VIEW',
+    'APP_OPEN',
+    'PUSH_OPENED',
+    'DEEP_LINK_OPENED',
+    'PDP_SCROLL_DEPTH',
+    'VIDEO_PLAY',
+  ]),
+  anonymousId: z.string().trim().max(200).optional(),
+  sessionId: z.string().trim().max(200).optional(),
+  productId: uuidSchema.optional(),
+  skuId: uuidSchema.optional(),
+  listingId: uuidSchema.optional(),
+  sellerId: uuidSchema.optional(),
+  categoryId: uuidSchema.optional(),
+  orderId: uuidSchema.optional(),
+  searchQuery: z.string().trim().max(200).optional(),
+  surface: z
+    .enum([
+      'HOME',
+      'CATEGORY',
+      'PLP',
+      'PDP',
+      'SEARCH',
+      'CART',
+      'CHECKOUT',
+      'ORDERS',
+      'WISHLIST',
+      'COLLECTION',
+      'CAMPAIGN',
+      'NOTIFICATION',
+      'DEEP_LINK',
+    ])
+    .optional(),
+  position: z.number().int().min(0).max(10000).optional(),
+  isSponsored: z.boolean().default(false),
+  quantity: z.number().int().positive().optional(),
+  valuePaise: z.number().int().nonnegative().optional(),
+  properties: z.record(z.unknown()).default({}),
+});
+
+export const platformSettingSchema = z.object({
+  value: z.unknown(),
+  valueType: z.enum(['string', 'number', 'boolean', 'object', 'array']),
+  category: z.enum([
+    'commerce',
+    'checkout',
+    'payment',
+    'shipping',
+    'returns',
+    'seller',
+    'finance',
+    'support',
+    'security',
+    'notification',
+    'catalog',
+    'search',
+    'general',
+  ]),
+  label: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(2).max(1000),
+  isPublic: z.boolean().default(false),
+  isSensitive: z.boolean().default(false),
+  validationSchema: z.record(z.unknown()).optional(),
+});
+
+export const featureFlagSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(2).max(1000),
+  isEnabled: z.boolean(),
+  defaultValue: z.boolean(),
+  rolloutPercentage: z.number().int().min(0).max(100).default(0),
+  ownerTeam: z.string().trim().max(100).optional(),
+  expectedRemovalAt: z.string().date().optional(),
+});
+
+export const homeSectionSchema = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  sectionType: z.enum([
+    'HERO_BANNER',
+    'CATEGORY_GRID',
+    'PRODUCT_CAROUSEL',
+    'DEALS_STRIP',
+    'BRAND_STRIP',
+    'SELLER_SPOTLIGHT',
+    'FLASH_SALE',
+    'CAMPAIGN_BANNER',
+    'RECOMMENDED',
+    'RECENTLY_VIEWED',
+    'VIDEO',
+    'RICH_CONTENT',
+    'COLLECTION_GRID',
+    'COUNTDOWN',
+    'TOP_SELLING',
+  ]),
+  title: z.string().trim().max(200).optional(),
+  titleHi: z.string().trim().max(200).optional(),
+  subtitle: z.string().trim().max(500).optional(),
+  configuration: z.record(z.unknown()).default({}),
+  position: z.number().int().min(0).max(10000).default(100),
+  surfaces: z
+    .array(z.enum(['web', 'android', 'ios']))
+    .min(1)
+    .default(['web', 'android', 'ios']),
+  audienceSegments: z.array(z.string().max(100)).default([]),
+  audienceStates: z.array(stateCodeSchema).default([]),
+  campaignId: uuidSchema.optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ARCHIVED']).default('DRAFT'),
+});
+
+// ---------------------------------------------------------------------------
 // Seller
 // ---------------------------------------------------------------------------
 
@@ -369,7 +705,11 @@ export const sellerTaxProfileSchema = z
     legalNameAsPerPan: z.string().trim().min(3).max(200),
   })
   .superRefine((v, ctx) => {
-    if (v.gstRegistrationType !== 'UNREGISTERED' && v.gstRegistrationType !== 'EXEMPT' && !v.gstin) {
+    if (
+      v.gstRegistrationType !== 'UNREGISTERED' &&
+      v.gstRegistrationType !== 'EXEMPT' &&
+      !v.gstin
+    ) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['gstin'], message: 'GSTIN is required' });
     }
     // A GSTIN embeds the PAN at characters 3-12; a mismatch means bad or forged data.
@@ -389,35 +729,45 @@ export const sellerTaxProfileSchema = z
     }
   });
 
-export const sellerBankAccountSchema = z.object({
-  accountHolderName: z.string().trim().min(2).max(120),
-  accountNumber: z.string().regex(/^[0-9]{6,20}$/, 'Enter a valid account number'),
-  confirmAccountNumber: z.string(),
-  ifsc: ifscSchema,
-  accountType: z.enum(['SAVINGS', 'CURRENT']).default('CURRENT'),
-}).refine((v) => v.accountNumber === v.confirmAccountNumber, {
-  message: 'Account numbers do not match',
-  path: ['confirmAccountNumber'],
-});
+export const sellerBankAccountSchema = z
+  .object({
+    accountHolderName: z.string().trim().min(2).max(120),
+    accountNumber: z.string().regex(/^[0-9]{6,20}$/, 'Enter a valid account number'),
+    confirmAccountNumber: z.string(),
+    ifsc: ifscSchema,
+    accountType: z.enum(['SAVINGS', 'CURRENT']).default('CURRENT'),
+  })
+  .refine((v) => v.accountNumber === v.confirmAccountNumber, {
+    message: 'Account numbers do not match',
+    path: ['confirmAccountNumber'],
+  });
 
-export const upsertListingSchema = z.object({
-  skuId: uuidSchema,
-  sellerSkuCode: z.string().trim().max(64).optional(),
-  condition: z
-    .enum(['NEW', 'REFURBISHED_EXCELLENT', 'REFURBISHED_GOOD', 'OPEN_BOX', 'USED_LIKE_NEW', 'USED_GOOD'])
-    .default('NEW'),
-  fulfillmentModel: z
-    .enum(['SELLER_FULFILLED', 'NOVAMART_FULFILLED', 'WAREHOUSE_FULFILLED', 'DROPSHIP'])
-    .default('SELLER_FULFILLED'),
-  declaredMrpPaise: z.number().int().positive(),
-  sellingPricePaise: z.number().int().positive(),
-  minOrderQuantity: z.number().int().min(1).max(100).default(1),
-  maxOrderQuantity: z.number().int().min(1).max(100).default(10),
-  handlingTimeDays: z.number().int().min(0).max(14).default(1),
-  defaultWarehouseId: uuidSchema.optional(),
-  returnWindowDays: z.number().int().min(0).max(90).optional(),
-  codAllowed: z.boolean().optional(),
-})
+export const upsertListingSchema = z
+  .object({
+    skuId: uuidSchema,
+    sellerSkuCode: z.string().trim().max(64).optional(),
+    condition: z
+      .enum([
+        'NEW',
+        'REFURBISHED_EXCELLENT',
+        'REFURBISHED_GOOD',
+        'OPEN_BOX',
+        'USED_LIKE_NEW',
+        'USED_GOOD',
+      ])
+      .default('NEW'),
+    fulfillmentModel: z
+      .enum(['SELLER_FULFILLED', 'NOVAMART_FULFILLED', 'WAREHOUSE_FULFILLED', 'DROPSHIP'])
+      .default('SELLER_FULFILLED'),
+    declaredMrpPaise: z.number().int().positive(),
+    sellingPricePaise: z.number().int().positive(),
+    minOrderQuantity: z.number().int().min(1).max(100).default(1),
+    maxOrderQuantity: z.number().int().min(1).max(100).default(10),
+    handlingTimeDays: z.number().int().min(0).max(14).default(1),
+    defaultWarehouseId: uuidSchema.optional(),
+    returnWindowDays: z.number().int().min(0).max(90).optional(),
+    codAllowed: z.boolean().optional(),
+  })
   .refine((v) => v.sellingPricePaise <= v.declaredMrpPaise, {
     message: 'Selling price cannot exceed MRP',
     path: ['sellingPricePaise'],
@@ -449,7 +799,10 @@ export const inventoryAdjustmentSchema = z.object({
     'SUPPLIER_SHORTAGE',
     'QC_REJECT',
   ]),
-  quantityDelta: z.number().int().refine((v) => v !== 0, 'Adjustment cannot be zero'),
+  quantityDelta: z
+    .number()
+    .int()
+    .refine((v) => v !== 0, 'Adjustment cannot be zero'),
   targetBucket: z.enum(['AVAILABLE', 'DAMAGED', 'BLOCKED']).default('AVAILABLE'),
   /** Long enough to be a real explanation, because this moves stock. */
   reason: z.string().trim().min(10).max(500),
@@ -505,16 +858,18 @@ export const shippingWebhookSchema = z.object({
  * One row of a seller bulk price/stock upload. Validated per row so a single bad line
  * is reported precisely instead of failing the whole file.
  */
-export const bulkPriceStockRowSchema = z.object({
-  sku_code: z.string().trim().min(3).max(64),
-  mrp: z.coerce.number().positive(),
-  selling_price: z.coerce.number().positive(),
-  quantity: z.coerce.number().int().min(0).max(100_000),
-  warehouse_code: z.string().trim().min(3).max(32),
-}).refine((v) => v.selling_price <= v.mrp, {
-  message: 'selling_price cannot exceed mrp',
-  path: ['selling_price'],
-});
+export const bulkPriceStockRowSchema = z
+  .object({
+    sku_code: z.string().trim().min(3).max(64),
+    mrp: z.coerce.number().positive(),
+    selling_price: z.coerce.number().positive(),
+    quantity: z.coerce.number().int().min(0).max(100_000),
+    warehouse_code: z.string().trim().min(3).max(32),
+  })
+  .refine((v) => v.selling_price <= v.mrp, {
+    message: 'selling_price cannot exceed mrp',
+    path: ['selling_price'],
+  });
 
 export type AddressInput = z.infer<typeof addressSchema>;
 export type PlaceOrderInput = z.infer<typeof placeOrderSchema>;

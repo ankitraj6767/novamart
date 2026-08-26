@@ -7,10 +7,7 @@ import { OutboxService } from './infrastructure/outbox/outbox.service';
 import { PaymentProviderRegistry } from './infrastructure/providers/payment/payment-provider.registry';
 import { AuthService } from './common/auth/auth.service';
 import { AuthGuard } from './common/guards/auth.guard';
-import {
-  IpRateLimitGuard,
-  PrincipalRateLimitGuard,
-} from './common/guards/rate-limit.guard';
+import { IpRateLimitGuard, PrincipalRateLimitGuard } from './common/guards/rate-limit.guard';
 import { ErrorFilter } from './common/filters/error.filter';
 import { EnvelopeInterceptor } from './common/interceptors/envelope.interceptor';
 import { IdempotencyService } from './common/idempotency/idempotency.service';
@@ -40,6 +37,27 @@ import { InventoryController } from './modules/inventory/inventory.controller';
 import { InventoryService } from './modules/inventory/inventory.service';
 import { AdminSellerController } from './modules/admin/admin.controller';
 import { AdminSellerService } from './modules/admin/admin-seller.service';
+import { PlatformAdminController } from './modules/admin/platform-admin.controller';
+import { PlatformAdminService } from './modules/admin/platform-admin.service';
+import { CustomerExperienceController } from './modules/customer/customer-experience.controller';
+import { CustomerExperienceService } from './modules/customer/customer-experience.service';
+import { RiskController } from './modules/risk/risk.controller';
+import { RiskService } from './modules/risk/risk.service';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
+import { ShippingProviderRegistry } from './infrastructure/providers/shipping/shipping-provider.registry';
+import { FulfillmentController } from './modules/fulfillment/fulfillment.controller';
+import { FulfillmentService } from './modules/fulfillment/fulfillment.service';
+import { ReturnsController } from './modules/returns/returns.controller';
+import { ReturnsService } from './modules/returns/returns.service';
+import { ReviewsController } from './modules/reviews/reviews.controller';
+import { ReviewsService } from './modules/reviews/reviews.service';
+import { SupportController } from './modules/support/support.controller';
+import { SupportService } from './modules/support/support.service';
+import { FinanceController } from './modules/finance/finance.controller';
+import { FinanceService } from './modules/finance/finance.service';
+import { SearchController } from './modules/search/search.controller';
+import { SearchService } from './modules/search/search.service';
 
 /**
  * The payment simulator is registered only outside production. Excluding the controller
@@ -69,6 +87,16 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     SellerController,
     InventoryController,
     AdminSellerController,
+    FulfillmentController,
+    ReturnsController,
+    ReviewsController,
+    SupportController,
+    FinanceController,
+    SearchController,
+    PlatformAdminController,
+    CustomerExperienceController,
+    RiskController,
+    NotificationsController,
     ...developmentOnlyControllers,
   ],
   providers: [
@@ -92,6 +120,17 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     SellerService,
     InventoryService,
     AdminSellerService,
+    ShippingProviderRegistry,
+    FulfillmentService,
+    ReturnsService,
+    ReviewsService,
+    SupportService,
+    FinanceService,
+    SearchService,
+    PlatformAdminService,
+    CustomerExperienceService,
+    RiskService,
+    NotificationsService,
     /**
      * Guards run in registration order, and this order is load-bearing:
      *

@@ -26,7 +26,7 @@ export class AdminSellerService {
     private readonly db: DatabaseService,
     private readonly outbox: OutboxService,
     private readonly auth: AuthService,
-  ) { }
+  ) {}
 
   /**
    * Evicts the cached principal of every user attached to a seller.
@@ -298,9 +298,7 @@ export class AdminSellerService {
     const principal = RequestContext.requirePrincipal();
 
     if (!input.approved && !input.reason) {
-      throw AppError.validation([
-        { field: 'reason', issue: 'A rejection reason is required' },
-      ]);
+      throw AppError.validation([{ field: 'reason', issue: 'A rejection reason is required' }]);
     }
 
     const status = input.approved ? 'VERIFIED' : 'REJECTED';
@@ -344,10 +342,10 @@ export class AdminSellerService {
              verified_at          = ${input.approved ? this.db.sql`now()` : null},
              failure_reason       = ${input.approved ? null : (input.reason ?? 'Verification failed')},
              verification_response = ${this.db.sql.json({
-      method: 'MANUAL',
-      operator: principal.userId,
-      at: new Date().toISOString(),
-    } as never)}
+               method: 'MANUAL',
+               operator: principal.userId,
+               at: new Date().toISOString(),
+             } as never)}
        where id = ${bankAccountId}
          and deleted_at is null
       returning id

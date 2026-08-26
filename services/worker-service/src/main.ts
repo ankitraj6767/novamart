@@ -1,6 +1,7 @@
 import { AnalyticsConsumer } from './consumers/analytics.consumer';
 import { FinanceConsumer } from './consumers/finance.consumer';
 import { NotificationConsumer } from './consumers/notification.consumer';
+import { SearchIndexerConsumer } from './consumers/search-indexer.consumer';
 import { allJobs } from './jobs';
 import { JobScheduler } from './jobs/scheduler';
 import { OutboxDispatcher } from './outbox/dispatcher';
@@ -35,6 +36,7 @@ async function bootstrap(): Promise<void> {
     new AnalyticsConsumer(),
     new NotificationConsumer(),
     new FinanceConsumer(),
+    new SearchIndexerConsumer(),
   ]);
 
   const scheduler = new JobScheduler(ctx, allJobs);

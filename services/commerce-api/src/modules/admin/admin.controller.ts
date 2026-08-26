@@ -98,10 +98,7 @@ export class AdminSellerController {
   @Permissions(PERMISSIONS.SELLER_BANK_VERIFY)
   @Audit('seller_bank.verify', 'seller_bank_account')
   @Post('bank-accounts/:bankAccountId/verify')
-  async verifyBankAccount(
-    @Param('bankAccountId') bankAccountId: string,
-    @Body() body: unknown,
-  ) {
+  async verifyBankAccount(@Param('bankAccountId') bankAccountId: string, @Body() body: unknown) {
     return this.admin.verifyBankAccount(
       parse(uuidSchema, bankAccountId),
       parse(verificationSchema, body),

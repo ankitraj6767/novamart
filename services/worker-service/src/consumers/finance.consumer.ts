@@ -43,11 +43,7 @@ export class FinanceConsumer implements Consumer {
     await this.reverseEarnings(event, orderItemIds, tx, ctx);
   }
 
-  private async postEarnings(
-    orderItemIds: string[],
-    tx: Tx,
-    ctx: WorkerContext,
-  ): Promise<void> {
+  private async postEarnings(orderItemIds: string[], tx: Tx, ctx: WorkerContext): Promise<void> {
     for (const orderItemId of orderItemIds) {
       // Only post for items that actually reached the customer. A shipment event can
       // carry items that were cancelled or short-shipped, and paying for those would

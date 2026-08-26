@@ -72,9 +72,9 @@ export class AnalyticsConsumer implements Consumer {
     // is summed from ORDER_CREATED; refunds are netted from REFUND_SUCCESS.
     const valuePaise = this.money(
       payload['totalPayablePaise'] ??
-      payload['amountPaise'] ??
-      payload['subtotalPaise'] ??
-      payload['refundablePaise'],
+        payload['amountPaise'] ??
+        payload['subtotalPaise'] ??
+        payload['refundablePaise'],
     );
 
     await tx`

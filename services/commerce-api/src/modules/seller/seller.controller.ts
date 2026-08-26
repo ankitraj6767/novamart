@@ -9,6 +9,7 @@ import {
   sellerTaxProfileSchema,
   stateCodeSchema,
   upsertListingSchema,
+  updateOrderItemStatusSchema,
   uuidSchema,
 } from '@novamart/validation';
 import { PERMISSIONS } from '@novamart/permissions';
@@ -47,7 +48,15 @@ const submitReviewSchema = z.object({
 
 const listingQuerySchema = offsetPaginationSchema.extend({
   status: z
-    .enum(['DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'INACTIVE', 'OUT_OF_STOCK', 'SUPPRESSED', 'BLOCKED'])
+    .enum([
+      'DRAFT',
+      'PENDING_APPROVAL',
+      'ACTIVE',
+      'INACTIVE',
+      'OUT_OF_STOCK',
+      'SUPPRESSED',
+      'BLOCKED',
+    ])
     .optional(),
   search: z.string().trim().max(80).optional(),
 });
@@ -61,7 +70,7 @@ const listingQuerySchema = offsetPaginationSchema.extend({
  */
 @Controller({ path: 'sellers', version: '1' })
 export class SellerController {
-  constructor(private readonly seller: SellerService) { }
+  constructor(private readonly seller: SellerService) {}
 
   /**
    * Registration is open to any authenticated user: becoming a seller is a self-service
@@ -128,10 +137,7 @@ export class SellerController {
   @Permissions(PERMISSIONS.LISTING_CREATE)
   @Post(':sellerId/listings')
   async upsertListing(@Param('sellerId') sellerId: string, @Body() body: unknown) {
-    return this.seller.upsertListing(
-      parse(uuidSchema, sellerId),
-      parse(upsertListingSchema, body),
-    );
+    return this.seller.upsertListing(parse(uuidSchema, sellerId), parse(upsertListingSchema, body));
   }
 
   @Scope('seller', 'param:sellerId')
@@ -160,5 +166,30 @@ export class SellerController {
   async dashboard(@Param('sellerId') sellerId: string, @Query('days') days?: string) {
     const parsedDays = parse(z.coerce.number().int().min(1).max(365).default(30), days ?? 30);
     return this.seller.dashboard(parse(uuidSchema, sellerId), parsedDays);
+  }
+
+  @Scope('seller', 'param:sellerId')
+  @Permissions(PERMISSIONS.ORDER_READ)
+  @Get(':sellerId/orders')
+  async orders(@Param('sellerId') sellerId: string, @Query() query: Record<string, unknown>) {
+    return this.seller.orders(
+      parse(uuidSchema, sellerId),
+      parse(offsetPaginationSchema.extend({ status: z.string().max(40).optional() }), query),
+    );
+  }
+
+  @Scope('seller', 'param:sellerId')
+  @Permissions(PERMISSIONS.ORDER_UPDATE_STATUS)
+  @Patch(':sellerId/orders/items/:orderItemId/status')
+  async updateOrderItemStatus(
+    @Param('sellerId') sellerId: string,
+    @Param('orderItemId') orderItemId: string,
+    @Body() body: unknown,
+  ) {
+    return this.seller.updateOrderItemStatus(
+      parse(uuidSchema, sellerId),
+      parse(uuidSchema, orderItemId),
+      parse(updateOrderItemStatusSchema, body),
+    );
   }
 }

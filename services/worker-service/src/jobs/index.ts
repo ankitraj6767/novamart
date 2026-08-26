@@ -262,6 +262,56 @@ export const dailyMetricsJob: ScheduledJob = {
   },
 };
 
+/**
+ * Delivers queued in-app notifications and local test notifications. External channels
+ * remain behind provider integrations; a production deployment with no provider marks the
+ * attempt failed instead of silently claiming delivery.
+ */
+export const notificationDispatchJob: ScheduledJob = {
+  name: 'marketing.dispatch-notifications',
+  intervalMs: 5_000,
+  async run(ctx: WorkerContext, tx: Tx): Promise<JobResult> {
+    const rows = await tx<Array<{ id: string; channel: string }>>`
+      with claimed as (
+        select id from marketing.notifications
+         where status = 'QUEUED' and scheduled_for <= now()
+         order by case priority when 'CRITICAL' then 0 when 'HIGH' then 1 else 2 end, created_at
+         for update skip locked limit 100
+      )
+      update marketing.notifications n
+         set status = 'SENDING', attempts = attempts + 1
+        from claimed c where n.id = c.id
+      returning n.id, n.channel
+    `;
+    let sent = 0;
+    for (const row of rows) {
+      const localMock = ctx.env.APP_ENV !== 'production';
+      const supported =
+        row.channel === 'IN_APP' ||
+        (localMock && ['SMS', 'EMAIL', 'PUSH', 'WHATSAPP'].includes(row.channel));
+      if (supported) {
+        await tx`
+          update marketing.notifications
+             set status = 'SENT', provider = ${row.channel === 'IN_APP' ? 'internal' : 'mock'}, sent_at = now()
+           where id = ${row.id}
+        `;
+        sent += 1;
+      } else {
+        await tx`
+          update marketing.notifications
+             set status = 'FAILED', failure_code = 'PROVIDER_NOT_CONFIGURED', failure_reason = 'No notification provider is configured'
+           where id = ${row.id}
+        `;
+      }
+    }
+    return {
+      itemsScanned: rows.length,
+      itemsAffected: sent,
+      ...(rows.length ? { details: { failed: rows.length - sent } } : {}),
+    };
+  },
+};
+
 export const allJobs: ScheduledJob[] = [
   reservationSweepJob,
   outboxRequeueJob,
@@ -270,4 +320,5 @@ export const allJobs: ScheduledJob[] = [
   checkoutExpiryJob,
   idempotencyCleanupJob,
   dailyMetricsJob,
+  notificationDispatchJob,
 ];

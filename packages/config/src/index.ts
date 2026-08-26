@@ -158,10 +158,7 @@ export const serverEnvSchema = z
 
     require('SUPABASE_SECRET_KEY', 'The backend cannot reach Supabase without a secret key');
     require('SUPABASE_JWKS_URL', 'JWT verification requires the project JWKS URL');
-    require(
-      'FIELD_ENCRYPTION_KEY',
-      'Bank account and KYC document numbers cannot be stored without an encryption key',
-    );
+    require('FIELD_ENCRYPTION_KEY', 'Bank account and KYC document numbers cannot be stored without an encryption key');
     require('INTERNAL_SERVICE_TOKEN_SECRET', 'Worker-to-API calls must be signed');
     require('TYPESENSE_ADMIN_API_KEY', 'Search indexing requires an admin key');
 
@@ -183,6 +180,24 @@ export const serverEnvSchema = z
         path: ['SHIPPING_PROVIDER'],
         message: 'The mock shipping provider must never run in production',
       });
+    }
+    if (env.SMS_PROVIDER === 'mock') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMS_PROVIDER'],
+        message: 'The mock SMS provider must never run in production',
+      });
+    } else {
+      require('MSG91_AUTH_KEY', 'MSG91 credentials are required for production SMS');
+    }
+    if (env.EMAIL_PROVIDER === 'mock') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_PROVIDER'],
+        message: 'The mock email provider must never run in production',
+      });
+    } else {
+      require('RESEND_API_KEY', 'Email provider credentials are required in production');
     }
     if (env.DATABASE_PREPARE) {
       ctx.addIssue({

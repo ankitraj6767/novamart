@@ -56,7 +56,7 @@ export class SellerService {
     private readonly outbox: OutboxService,
     private readonly crypto: FieldEncryptionService,
     private readonly auth: AuthService,
-  ) { }
+  ) {}
 
   // -------------------------------------------------------------------------
   // Onboarding
@@ -412,10 +412,7 @@ export class SellerService {
     }
 
     if (state.status !== 'DRAFT' && state.status !== 'ACTION_REQUIRED') {
-      throw new AppError(
-        'CONFLICT',
-        `A seller in ${state.status} cannot be submitted for review`,
-      );
+      throw new AppError('CONFLICT', `A seller in ${state.status} cannot be submitted for review`);
     }
 
     await this.db.transaction(RequestContext.sessionContext(), async (tx) => {
@@ -449,12 +446,14 @@ export class SellerService {
     sellerId: string,
     input: ListingInput,
   ): Promise<{ listingId: string; status: string }> {
-    await this.assertMembership(sellerId, ['SELLER_OWNER', 'SELLER_ADMIN', 'SELLER_CATALOG_MANAGER']);
+    await this.assertMembership(sellerId, [
+      'SELLER_OWNER',
+      'SELLER_ADMIN',
+      'SELLER_CATALOG_MANAGER',
+    ]);
     await this.assertTransactable(sellerId);
 
-    const [sku] = await this.db.sql<
-      Array<{ id: string; product_id: string; status: string }>
-    >`
+    const [sku] = await this.db.sql<Array<{ id: string; product_id: string; status: string }>>`
       select sk.id, sk.product_id, sk.status
         from catalog.skus sk
         join catalog.products p on p.id = sk.product_id
@@ -548,7 +547,11 @@ export class SellerService {
     listingId: string,
     input: { status: 'ACTIVE' | 'INACTIVE'; reason?: string },
   ): Promise<{ status: string }> {
-    await this.assertMembership(sellerId, ['SELLER_OWNER', 'SELLER_ADMIN', 'SELLER_CATALOG_MANAGER']);
+    await this.assertMembership(sellerId, [
+      'SELLER_OWNER',
+      'SELLER_ADMIN',
+      'SELLER_CATALOG_MANAGER',
+    ]);
 
     const [listing] = await this.db.sql<Array<{ id: string; sku_id: string; status: string }>>`
       select id, sku_id, status from catalog.seller_listings
@@ -575,10 +578,9 @@ export class SellerService {
         update catalog.seller_listings
            set status = ${input.status},
                -- seller_listings_status_reason requires a reason for INACTIVE.
-               status_reason = ${input.status === 'INACTIVE'
-          ? (input.reason ?? 'Deactivated by seller')
-          : null
-        },
+               status_reason = ${
+                 input.status === 'INACTIVE' ? (input.reason ?? 'Deactivated by seller') : null
+               },
                first_activated_at = case
                  when ${input.status} = 'ACTIVE' and first_activated_at is null then now()
                  else first_activated_at
@@ -629,12 +631,13 @@ export class SellerService {
        where sl.seller_id = ${sellerId}
          and sl.archived_at is null
          ${query.status ? sql`and sl.status = ${query.status}` : sql``}
-         ${query.search
-        ? sql`and (p.title ilike ${'%' + query.search + '%'}
+         ${
+           query.search
+             ? sql`and (p.title ilike ${'%' + query.search + '%'}
                         or sk.sku_code ilike ${'%' + query.search + '%'}
                         or sl.seller_sku_code ilike ${'%' + query.search + '%'})`
-        : sql``
-      }
+             : sql``
+         }
        order by sl.updated_at desc
        limit ${query.limit} offset ${query.offset}
     `;
@@ -730,6 +733,78 @@ export class SellerService {
     };
   }
 
+  async orders(
+    sellerId: string,
+    query: { limit: number; offset: number; status?: string },
+  ): Promise<Array<Record<string, unknown>>> {
+    await this.assertMembership(sellerId, ['SELLER_OWNER', 'SELLER_ADMIN', 'SELLER_ORDER_MANAGER']);
+    const sql = this.db.sql;
+    return sql<Array<Record<string, unknown>>>`
+      select oi.id, oi.item_number, oi.order_id, o.order_number, o.status as order_status,
+             o.payment_status, o.payment_method, oi.product_title, oi.sku_code, oi.quantity,
+             oi.status, oi.status_reason, oi.promised_dispatch_by, oi.promised_delivery_date,
+             oi.created_at, oi.updated_at, b.total_payable_paise::text,
+             sh.shipment_reference, sh.awb_number, sh.status as shipment_status
+        from commerce.order_items oi
+        join commerce.orders o on o.id = oi.order_id
+        left join commerce.order_item_price_breakdowns b on b.order_item_id = oi.id
+        left join fulfillment.shipment_items si on si.order_item_id = oi.id
+        left join fulfillment.shipments sh on sh.id = si.shipment_id
+       where oi.seller_id = ${sellerId}
+         ${query.status ? sql`and oi.status = ${query.status}` : sql``}
+       order by oi.created_at desc limit ${query.limit} offset ${query.offset}
+    `;
+  }
+
+  async updateOrderItemStatus(
+    sellerId: string,
+    orderItemId: string,
+    input: { toStatus: string; reason?: string },
+  ): Promise<Record<string, unknown>> {
+    await this.assertMembership(sellerId, ['SELLER_OWNER', 'SELLER_ADMIN', 'SELLER_ORDER_MANAGER']);
+    const principal = RequestContext.requirePrincipal();
+    return this.db.transaction(RequestContext.sessionContext(), async (tx) => {
+      const [item] = await tx<
+        Array<{
+          id: string;
+          order_id: string;
+          item_number: string;
+          user_id: string;
+          seller_id: string;
+          status: string;
+          product_title: string;
+        }>
+      >`
+        select oi.id, oi.order_id, oi.item_number, o.user_id, oi.seller_id, oi.status, oi.product_title
+          from commerce.order_items oi join commerce.orders o on o.id = oi.order_id
+         where oi.id = ${orderItemId} and oi.seller_id = ${sellerId} for update
+      `;
+      if (!item) throw AppError.notFound('Order item');
+      if (item.status === input.toStatus)
+        return { id: item.id, status: item.status, unchanged: true };
+      const [updated] = await tx<Array<Record<string, unknown>>>`
+        update commerce.order_items set status = ${input.toStatus}, status_reason = ${input.reason ?? null}
+         where id = ${orderItemId}
+        returning id, item_number, status, status_reason, updated_at
+      `;
+      await this.outbox.emit(tx, 'ORDER_ITEM_STATUS_CHANGED', {
+        orderId: item.order_id,
+        orderItemId: item.id,
+        itemNumber: item.item_number,
+        userId: item.user_id,
+        sellerId,
+        fromStatus: item.status,
+        toStatus: input.toStatus,
+        reason: input.reason ?? null,
+      });
+      this.logger.log(
+        { actorId: principal.userId, orderItemId, from: item.status, to: input.toStatus },
+        'Seller updated order item status',
+      );
+      return updated ?? {};
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Guards and helpers
   // -------------------------------------------------------------------------
@@ -757,9 +832,7 @@ export class SellerService {
     if (!membership) throw AppError.notFound('Seller');
 
     if (roles && !roles.includes(membership.role_code)) {
-      throw AppError.forbidden(
-        `This action requires one of: ${roles.join(', ')}`,
-      );
+      throw AppError.forbidden(`This action requires one of: ${roles.join(', ')}`);
     }
   }
 
@@ -773,10 +846,7 @@ export class SellerService {
     // Once approved, tax and bank changes go through support so the change is reviewed:
     // a silent bank-detail change is the textbook payout-diversion attack.
     if (!['DRAFT', 'DOCUMENTS_PENDING', 'ACTION_REQUIRED'].includes(seller.status)) {
-      throw new AppError(
-        'CONFLICT',
-        'Verified details can only be changed through seller support',
-      );
+      throw new AppError('CONFLICT', 'Verified details can only be changed through seller support');
     }
   }
 

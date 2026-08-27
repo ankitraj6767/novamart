@@ -16,7 +16,9 @@ services:
     ports: ["8108:8108"]
     volumes: ["novamart-typesense:/data"]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8108/health"]
+      # The Typesense image includes bash but not wget/curl. Keep the check HTTP-level
+      # so the container is only healthy when the Typesense server is accepting requests.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8108 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 5s
       timeout: 3s
       retries: 10

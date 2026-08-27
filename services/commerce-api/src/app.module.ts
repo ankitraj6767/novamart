@@ -34,6 +34,8 @@ import { SettingsService } from './modules/platform/settings.service';
 import { FieldEncryptionService } from './common/crypto/field-encryption';
 import { SellerController } from './modules/seller/seller.controller';
 import { SellerService } from './modules/seller/seller.service';
+import { SellerInsightsController } from './modules/seller/seller-insights.controller';
+import { SellerInsightsService } from './modules/seller/seller-insights.service';
 import { InventoryController } from './modules/inventory/inventory.controller';
 import { InventoryService } from './modules/inventory/inventory.service';
 import { AdminSellerController } from './modules/admin/admin.controller';
@@ -73,6 +75,8 @@ import { FinanceController } from './modules/finance/finance.controller';
 import { FinanceService } from './modules/finance/finance.service';
 import { SearchController } from './modules/search/search.controller';
 import { SearchService } from './modules/search/search.service';
+import { DeliveryController } from './modules/delivery/delivery.controller';
+import { DeliveryService } from './modules/delivery/delivery.service';
 
 /**
  * The payment simulator is registered only outside production. Excluding the controller
@@ -100,6 +104,7 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     PaymentsController,
     PaymentWebhookController,
     SellerController,
+    SellerInsightsController,
     InventoryController,
     AdminSellerController,
     FulfillmentController,
@@ -108,6 +113,7 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     SupportController,
     FinanceController,
     SearchController,
+    DeliveryController,
     PlatformAdminController,
     CustomerExperienceController,
     RiskController,
@@ -141,6 +147,7 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     OrdersService,
     PaymentsService,
     SellerService,
+    SellerInsightsService,
     InventoryService,
     AdminSellerService,
     ShippingProviderRegistry,
@@ -150,6 +157,7 @@ const developmentOnlyControllers: Array<Type<unknown>> =
     SupportService,
     FinanceService,
     SearchService,
+    DeliveryService,
     PlatformAdminService,
     CustomerExperienceService,
     RiskService,

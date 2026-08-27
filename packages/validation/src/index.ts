@@ -787,6 +787,40 @@ export const appVersionPolicySchema = z.object({
   maintenanceUntil: z.string().datetime().optional(),
 }).refine((value) => !value.maintenanceMode || value.maintenanceMessage !== undefined, { message: 'Maintenance message is required when maintenance mode is on', path: ['maintenanceMessage'] });
 
+export const deliveryAvailabilitySchema = z.object({
+  status: z.enum(['AVAILABLE', 'ON_DUTY', 'ON_BREAK', 'OFF_DUTY']),
+  warehouseId: uuidSchema.optional(),
+});
+
+export const deliveryAttemptSchema = z.object({
+  outcome: z.enum(['DELIVERED', 'CUSTOMER_NOT_AVAILABLE', 'ADDRESS_INCORRECT', 'CUSTOMER_REFUSED', 'PAYMENT_NOT_READY', 'PREMISES_CLOSED', 'UNREACHABLE', 'OUT_OF_DELIVERY_AREA', 'WEATHER', 'RESCHEDULED_BY_CUSTOMER', 'DAMAGED_IN_TRANSIT']),
+  failureReason: z.string().trim().min(5).max(500).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  nextAttemptDate: z.string().date().optional(),
+}).refine((value) => value.outcome === 'DELIVERED' || value.failureReason !== undefined, { message: 'A failure reason is required when delivery is not completed', path: ['failureReason'] });
+
+export const deliveryProofSchema = z.object({
+  proofType: z.enum(['OTP', 'SIGNATURE', 'PHOTO', 'QR_SCAN', 'CARRIER_POD']),
+  otp: z.string().regex(/^\d{4,8}$/).optional(),
+  signatureStoragePath: z.string().trim().max(500).optional(),
+  photoStoragePath: z.string().trim().max(500).optional(),
+  recipientName: z.string().trim().min(2).max(120).optional(),
+  relationship: z.string().trim().max(80).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+}).superRefine((value, ctx) => {
+  if (value.proofType === 'OTP' && !value.otp) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['otp'], message: 'OTP is required' });
+  if (value.proofType === 'SIGNATURE' && !value.signatureStoragePath) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['signatureStoragePath'], message: 'Signature path is required' });
+  if (value.proofType === 'PHOTO' && !value.photoStoragePath) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['photoStoragePath'], message: 'Photo path is required' });
+});
+
+export const deliveryCodCollectionSchema = z.object({
+  collectedPaise: z.number().int().nonnegative(),
+  paymentReference: z.string().trim().max(120).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
 export const sellerDocumentSchema = z.object({
   documentType: z.enum(['PAN_CARD', 'GST_CERTIFICATE', 'AADHAAR', 'CANCELLED_CHEQUE', 'BANK_STATEMENT', 'INCORPORATION_CERTIFICATE', 'PARTNERSHIP_DEED', 'ADDRESS_PROOF', 'TRADEMARK_CERTIFICATE', 'BRAND_AUTHORISATION', 'FSSAI_LICENSE', 'BIS_CERTIFICATE', 'SIGNATURE', 'OTHER']),
   storagePath: z.string().trim().regex(/^kyc\/[0-9a-f-]{36}\/[a-z0-9_-]+\/[0-9a-f-]{36}\.(pdf|jpg|jpeg|png)$/i),

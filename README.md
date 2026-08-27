@@ -26,10 +26,7 @@ novamart/
 ├── services/
 │   ├── commerce-api/         NestJS on Fastify — all commerce logic
 │   ├── worker-service/       Outbox dispatcher + domain consumers
-│   ├── search-indexer/       Typesense projection worker
-│   ├── notification-worker/  Push/email/SMS/WhatsApp delivery
-│   ├── analytics-worker/     Event ingestion and aggregates
-│   └── scheduled-jobs/       Reservation sweeps, reconciliation, settlements
+│   └── worker-service/       Outbox consumers and scheduled jobs (analytics, search, notifications, finance)
 ├── packages/
 │   ├── types/                Shared TypeScript types + generated DB types
 │   ├── validation/           Zod schemas (one definition, all consumers)

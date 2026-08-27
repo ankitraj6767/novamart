@@ -2,7 +2,22 @@ import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import './globals.css';
 
-export const metadata: Metadata = { title: { default: 'NovaMart — Shop with confidence', template: '%s | NovaMart' }, description: 'A trusted Indian multi-vendor marketplace.', metadataBase: new URL(process.env['NEXT_PUBLIC_SITE_URL'] ?? 'http://localhost:3000') };
+const siteUrl = process.env['NEXT_PUBLIC_SITE_URL'] ?? 'http://localhost:3000';
+
+export const metadata: Metadata = {
+  title: { default: 'NovaMart — Shop with confidence', template: '%s | NovaMart' },
+  description: 'A trusted Indian multi-vendor marketplace.',
+  metadataBase: new URL(siteUrl),
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'NovaMart',
+    title: 'NovaMart — Shop with confidence',
+    description: 'Verified sellers, clear prices and delivery you can follow.',
+    url: siteUrl,
+  },
+  twitter: { card: 'summary_large_image', title: 'NovaMart — Shop with confidence' },
+};
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#0d7773' };
 
 export default function Layout({ children }: Readonly<{ children: React.ReactNode }>) {

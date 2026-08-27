@@ -37,7 +37,7 @@ tests/concurrency/run-oversell-test.sh 300 30
 
 Full verification state: `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm flutter:analyze`,
 and `pnpm flutter:test` pass; `pnpm test` passes 75 unit tests; `supabase db reset` exits 0
-applying **32 migrations** with **zero tables missing RLS**. The customer storefront also
+applying **34 migrations** with **zero tables missing RLS**. The customer storefront also
 passes a browser smoke check with seeded catalogue cards rendered and no Next.js error overlay.
 
 ### Bugs this exercise found and fixed
@@ -89,13 +89,13 @@ Building the vertical was what proved these; none were visible from the schema a
 
 ### Database — the substantive deliverable
 
-32 migrations covering all sixteen domains. **Verified by `supabase db reset` exiting 0
+34 migrations covering all sixteen domains. **Verified by `supabase db reset` exiting 0
 on a fresh database with zero errors:**
 
 | Metric                       | Value                    |
 | ---------------------------- | ------------------------ |
-| Migrations                   | 32                       |
-| Tables                       | 189                      |
+| Migrations                   | 34                       |
+| Tables                       | 190                      |
 | Tables missing RLS           | **0**                    |
 | RLS policies                 | 187                      |
 | Indexes                      | ~800                     |
@@ -189,14 +189,16 @@ Five Next.js 16.3.3 applications now build and lint: customer storefront, seller
 admin control centre, operations console, and support console. The customer app has public
 home/category/search/PDP routes plus cart, checkout, orders, account and support routes.
 Role consoles expose dashboard, catalog, order, inventory, fulfilment, returns, finance,
-CMS, risk and support queue surfaces against the API.
+  CMS, risk and support queue surfaces against the API. Seller performance, returns,
+  promotions, users, pickup locations and sales reports have seller-scoped read models.
 
 ### Mobile — Flutter
 
 Four Flutter applications now compile and pass widget tests: customer, seller, delivery and
-warehouse. They share Riverpod, GoRouter, Dio and Supabase-ready configuration, with role
-navigation shells and health/API wiring. Store signing, push credentials and the remaining
-screen-by-screen native polish still require product assets and business credentials.
+warehouse. They share Riverpod, GoRouter, Dio and Supabase-ready configuration. Customer and
+seller apps expose API-backed browsing/operations routes; delivery and warehouse apps expose
+assignment/work queues, availability, proof/COD and inventory workflow entry points. Store
+signing, push credentials and remaining native polish still require business assets.
 
 ### Integrations
 
@@ -217,7 +219,8 @@ breadth before it resembles a national marketplace.
 ### Testing and CI
 
 Vitest unit/integration suites, the RLS assertion suite (`tests/rls`), API E2E verticals,
-Flutter widget tests, browser smoke verification, and GitHub Actions pipeline are wired.
+Playwright web E2E, Flutter widget tests, browser smoke verification, and GitHub Actions
+pipeline are wired.
 
 ---
 

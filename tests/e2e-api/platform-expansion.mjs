@@ -50,6 +50,8 @@ async function main() {
   console.log('NovaMart platform expansion — API smoke verification');
   const customer = await signIn('ananya.iyer@example.novamart.in');
   const operations = await signIn('ops.admin@example.novamart.in');
+  const seller = await signIn('priya.nair@example.novamart.in');
+  const delivery = await signIn('delivery.agent@example.novamart.in');
 
   const settings = await api('GET', '/platform/public-settings');
   check('public platform settings are readable', settings.status === 200 && Object.keys(settings.body?.data ?? {}).length > 0);
@@ -87,6 +89,39 @@ async function main() {
 
   const audit = await api('GET', '/admin/audit?limit=5', operations);
   check('audit queue is permission protected', audit.status === 403);
+
+  const sellerQueue = await api('GET', '/admin/sellers?status=APPROVED&limit=100', operations);
+  const sellerRow = (sellerQueue.body?.data ?? []).find((row) => row.seller_code === 'SL100001');
+  check('approved seller is visible to operations', sellerQueue.status === 200 && Boolean(sellerRow?.id));
+  if (sellerRow?.id) {
+    const sellerScope = sellerRow.id;
+    const performance = await api('GET', `/sellers/${sellerScope}/performance`, seller);
+    check('seller performance is scoped', performance.status === 200 && performance.body?.data?.seller_id === sellerScope);
+    const returns = await api('GET', `/sellers/${sellerScope}/returns`, seller);
+    check('seller returns are scoped', returns.status === 200 && Array.isArray(returns.body?.data), String(returns.status));
+    const promotions = await api('GET', `/sellers/${sellerScope}/promotions`, seller);
+    check('seller promotions are scoped', promotions.status === 200 && Array.isArray(promotions.body?.data));
+    const users = await api('GET', `/sellers/${sellerScope}/users`, seller);
+    check('seller users and roles are scoped', users.status === 200 && users.body?.data?.length > 0, String(users.status));
+    const warehouses = await api('GET', `/sellers/${sellerScope}/warehouses`, seller);
+    check('seller pickup locations are scoped', warehouses.status === 200 && warehouses.body?.data?.length > 0, String(warehouses.status));
+    const report = await api('GET', `/sellers/${sellerScope}/reports/sales?days=90`, seller);
+    check('seller sales report is scoped', report.status === 200 && Array.isArray(report.body?.data));
+  }
+
+  const assignments = await api('GET', '/delivery/me/assignments', delivery);
+  const assignment = assignments.body?.data?.[0];
+  check('delivery partner sees assigned shipments', assignments.status === 200 && Boolean(assignment?.id));
+  const availability = await api('PATCH', '/delivery/me/availability', delivery, { status: 'ON_DUTY' });
+  check('delivery availability is persisted', availability.status === 200 && availability.body?.data?.status === 'ON_DUTY');
+  if (assignment?.id) {
+    const otp = await api('POST', `/delivery/shipments/${assignment.id}/otp`, delivery);
+    check('delivery OTP is issued without exposing the code', (otp.status === 201 || otp.status === 200) && otp.body?.data?.sent === true && !otp.body?.data?.otp);
+    const forgedProof = await api('POST', `/delivery/shipments/${assignment.id}/proof`, delivery, { proofType: 'OTP', otp: '0000' });
+    check('incorrect delivery OTP cannot complete a delivery', forgedProof.status === 422 && forgedProof.body?.error?.code === 'DELIVERY_OTP_INVALID');
+    const history = await api('GET', '/delivery/me/history', delivery);
+    check('delivery history is scoped', history.status === 200 && Array.isArray(history.body?.data));
+  }
 
   console.log(`\nRESULT: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

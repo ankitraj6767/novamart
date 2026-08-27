@@ -51,6 +51,7 @@ export const ERROR_CODES = [
   'SETTLEMENT_NOT_READY',
   'INSUFFICIENT_BALANCE',
   'ADJUSTMENT_NOT_APPROVED',
+  'DELIVERY_OTP_INVALID',
   'INTERNAL_ERROR',
 ] as const;
 
@@ -129,6 +130,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   SETTLEMENT_NOT_READY: 409,
   INSUFFICIENT_BALANCE: 422,
   ADJUSTMENT_NOT_APPROVED: 409,
+  DELIVERY_OTP_INVALID: 422,
   INTERNAL_ERROR: 500,
 };
 
@@ -181,5 +183,6 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   SETTLEMENT_NOT_READY: 'This settlement is not ready to process.',
   INSUFFICIENT_BALANCE: 'Insufficient balance for this operation.',
   ADJUSTMENT_NOT_APPROVED: 'This adjustment has not been approved.',
+  DELIVERY_OTP_INVALID: 'The delivery OTP is invalid or expired.',
   INTERNAL_ERROR: 'Something went wrong. Try again.',
 };

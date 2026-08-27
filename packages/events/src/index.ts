@@ -46,6 +46,7 @@ export const EVENT_TYPES = {
   ORDER_SHIPPED: 'ORDER_SHIPPED',
   OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   ORDER_DELIVERED: 'ORDER_DELIVERED',
+  DELIVERY_OTP_REQUESTED: 'DELIVERY_OTP_REQUESTED',
   // returns
   RETURN_REQUESTED: 'RETURN_REQUESTED',
   RETURN_APPROVED: 'RETURN_APPROVED',
@@ -279,6 +280,12 @@ export const reviewPublishedSchema = z.object({
   isVerifiedPurchase: z.boolean(),
 });
 
+export const deliveryOtpRequestedSchema = z.object({
+  shipmentId: uuid,
+  orderId: uuid,
+  challengeId: uuid,
+});
+
 /**
  * Registry mapping every event type to its payload schema. Publish and consume both
  * validate through this, so an event that does not match its contract never reaches a
@@ -312,6 +319,7 @@ export const EVENT_SCHEMAS = {
   ORDER_SHIPPED: shipmentEventSchema,
   OUT_FOR_DELIVERY: shipmentEventSchema,
   ORDER_DELIVERED: shipmentEventSchema,
+  DELIVERY_OTP_REQUESTED: deliveryOtpRequestedSchema,
   RETURN_REQUESTED: returnEventSchema,
   RETURN_APPROVED: returnEventSchema,
   RETURN_RECEIVED: returnEventSchema,
@@ -351,6 +359,7 @@ export const EVENT_AGGREGATE: Record<EventType, { aggregateType: string; partiti
   ORDER_SHIPPED: { aggregateType: 'shipment', partitionBy: 'orderId' },
   OUT_FOR_DELIVERY: { aggregateType: 'shipment', partitionBy: 'orderId' },
   ORDER_DELIVERED: { aggregateType: 'shipment', partitionBy: 'orderId' },
+  DELIVERY_OTP_REQUESTED: { aggregateType: 'shipment', partitionBy: 'orderId' },
   RETURN_REQUESTED: { aggregateType: 'return', partitionBy: 'returnRequestId' },
   RETURN_APPROVED: { aggregateType: 'return', partitionBy: 'returnRequestId' },
   RETURN_RECEIVED: { aggregateType: 'return', partitionBy: 'returnRequestId' },

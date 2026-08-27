@@ -100,6 +100,23 @@ export class AdminOperationsService {
     `;
   }
 
+  async inventory(query: { limit: number; offset: number }): Promise<Array<Record<string, unknown>>> {
+    return this.db.replica<Array<Record<string, unknown>>>`
+      select wi.id, wi.seller_id, s.display_name as seller_name, wi.warehouse_id,
+             w.code as warehouse_code, w.name as warehouse_name, sk.sku_code,
+             p.title as product_title, wi.available_quantity, wi.reserved_quantity,
+             wi.damaged_quantity, wi.blocked_quantity, wi.in_transit_quantity,
+             wi.physical_quantity, wi.reorder_point, wi.reorder_quantity, wi.updated_at
+        from inventory.warehouse_inventory wi
+        join inventory.warehouses w on w.id = wi.warehouse_id
+        join seller.sellers s on s.id = wi.seller_id
+        join catalog.skus sk on sk.id = wi.sku_id
+        join catalog.products p on p.id = sk.product_id
+       order by wi.updated_at desc
+       limit ${query.limit} offset ${query.offset}
+    `;
+  }
+
   async reviewQueue(limit: number): Promise<Array<Record<string, unknown>>> {
     return this.db.replica<Array<Record<string, unknown>>>`select id, product_id, user_id, rating, title, body, status, report_count, created_at from commerce.reviews where status in ('PENDING_MODERATION', 'FLAGGED') order by report_count desc, created_at limit ${limit}`;
   }

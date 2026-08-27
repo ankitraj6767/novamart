@@ -195,6 +195,7 @@ with mapping(role_code, permission_code) as (
     -- Delivery partner
     ('DELIVERY_AGENT', 'shipment.read'),
     ('DELIVERY_AGENT', 'order.read'),
+    ('DELIVERY_AGENT', 'cod.reconcile'),
 
     -- Warehouse
     ('WAREHOUSE_PICKER', 'order.read'),

@@ -46,6 +46,10 @@ export class AdminOperationsController {
   @Get('logistics')
   async logistics(@Query() query: Record<string, unknown>) { return this.admin.logistics(parse(querySchema, query)); }
 
+  @Permissions(PERMISSIONS.INVENTORY_READ)
+  @Get('inventory')
+  async inventory(@Query() query: Record<string, unknown>) { return this.admin.inventory(parse(querySchema, query)); }
+
   @Permissions(PERMISSIONS.REVIEW_MODERATE)
   @Get('reviews/queue')
   async reviews(@Query('limit') limit?: string) { return this.admin.reviewQueue(parse(limitSchema, limit ?? 100)); }

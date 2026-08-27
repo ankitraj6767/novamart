@@ -26,7 +26,7 @@ money mutation.
 
 | Area             | Endpoints                                                                                                                         |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Sellers          | Seller registration, tax/bank onboarding, warehouses, listings, dashboard, seller orders and item status updates under `/sellers` |
+| Sellers          | Seller registration, tax/bank onboarding, warehouses, listings, dashboard, orders, performance, returns, promotions, users and sales reports under `/sellers` |
 | Inventory        | Receipts, maker-checker adjustments, stock list and immutable ledger under `/inventory`                                           |
 | Fulfillment      | Shipment queue/create/label, order tracking under `/shipping`; carrier callbacks under `/shipping/webhooks/:provider`             |
 | Returns/QC       | Approval, rejection, receipt and inspection under `/returns/:returnRequestId/...`                                                 |
@@ -34,6 +34,11 @@ money mutation.
 | Support          | Agent ticket update/escalation routes under `/support`                                                                            |
 | Risk             | Rules, events, scores and fraud cases under `/risk`                                                                               |
 | Dynamic platform | Settings, feature flags and homepage sections under `/admin/platform`                                                             |
+| Delivery         | Assigned queue/history, availability, OTP challenge, delivery attempts, proof of delivery and COD collection under `/delivery`  |
+| Admin operations | Customer/catalog/order/payment/refund/return/logistics/inventory/finance/audit queues under `/admin`                              |
+
+Delivery OTP endpoints return only a challenge identifier and expiry. The raw OTP is
+delivered out-of-band, stored nowhere, and verified against a short-lived HMAC challenge.
 
 Checkout and order creation require an `Idempotency-Key`; refund, shipment, payout and
 settlement writes also carry deterministic database idempotency keys. Privileged routes

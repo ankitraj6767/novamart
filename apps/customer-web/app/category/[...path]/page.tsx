@@ -1,10 +1,32 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { api } from '@/lib/api';
 import { money } from '@novamart/api-client';
 import { Card, EmptyState, PageShell } from '@novamart/ui';
 
 type Props = { params: Promise<{ path: string[] }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { path } = await params;
+  const categoryPath = path.join('/');
+  const category = await (await api())
+    .get<{ name: string; description?: string | null }>(
+      `/catalog/categories/${encodeURIComponent(categoryPath)}`,
+    )
+    .catch(() => null);
+  return {
+    title: category?.name ?? 'Category',
+    description: category?.description ?? `Shop ${category?.name ?? 'verified products'} on NovaMart.`,
+    alternates: { canonical: `/category/${categoryPath}` },
+    openGraph: {
+      type: 'website',
+      title: category?.name ?? 'NovaMart category',
+      description: category?.description ?? 'Explore verified offers from NovaMart sellers.',
+      url: `/category/${categoryPath}`,
+    },
+  };
+}
 export default async function CategoryPage({ params }: Props) {
   const { path } = await params;
   const categoryPath = path.join('/');

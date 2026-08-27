@@ -23,6 +23,8 @@ jobs:
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:web
 
   database:
     runs-on: ubuntu-latest
@@ -35,4 +37,5 @@ jobs:
       - run: supabase start
       - run: supabase db reset
       - run: supabase db lint --level warning
-      - run: supabase gen types typescript --local --schema public,identity,catalog,seller,pricing,inventory,commerce,payments,fulfillment,returns,finance,marketing,support,analytics,audit,platform > packages/types/src/generated/database.ts
+      - run: bash tests/rls/run.sh
+      - run: pnpm db:types

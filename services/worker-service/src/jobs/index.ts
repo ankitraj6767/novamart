@@ -273,9 +273,19 @@ export const notificationDispatchJob: ScheduledJob = {
   async run(ctx: WorkerContext, tx: Tx): Promise<JobResult> {
     const rows = await tx<Array<{ id: string; channel: string }>>`
       with claimed as (
-        select id from marketing.notifications
-         where status = 'QUEUED' and scheduled_for <= now()
-         order by case priority when 'CRITICAL' then 0 when 'HIGH' then 1 else 2 end, created_at
+        select n.id from marketing.notifications n
+         where n.status = 'QUEUED' and n.scheduled_for <= now()
+         order by case coalesce(
+                    (select t.priority
+                       from marketing.notification_templates t
+                      where t.id = n.template_id),
+                    'NORMAL'
+                  )
+                    when 'CRITICAL' then 0
+                    when 'HIGH' then 1
+                    else 2
+                  end,
+                  n.created_at
          for update skip locked limit 100
       )
       update marketing.notifications n
